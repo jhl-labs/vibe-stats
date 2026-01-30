@@ -123,9 +123,14 @@ class GitHubClient:
             params["since"] = since
         if until:
             params["until"] = until
-        return await self._cached_paginate(
-            f"/repos/{owner}/{repo}/commits", params=params
-        )
+        try:
+            return await self._cached_paginate(
+                f"/repos/{owner}/{repo}/commits", params=params
+            )
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 409:
+                return []
+            raise
 
     async def get_languages(self, owner: str, repo: str) -> dict[str, int]:
         """Get language breakdown (bytes) for a repository."""
@@ -150,6 +155,8 @@ class GitHubClient:
                     await asyncio.sleep(2 ** attempt)
                     continue
                 raise
+            if response.status_code == 204:
+                return []
             if response.status_code == 202 and attempt < retries - 1:
                 await asyncio.sleep(2 ** attempt)
                 continue
