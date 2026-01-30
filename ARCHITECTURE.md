@@ -2,34 +2,35 @@
 
 ## 1. 프로젝트 개요
 
-**vibe-stats**는 GitHub Organization의 코드 기여 통계를 수집·분석하여 터미널에 리포트를 출력하는 CLI 도구이다. Git clone 없이 GitHub API만으로 커밋 수, CLOC(additions/deletions), 언어 비율 등을 산출한다.
+**vibe-stats**는 GitHub Organization의 코드 기여 통계를 수집·분석하여 터미널에 리포트를 출력하는 CLI 도구이다. Git clone 없이 GitHub REST API만으로 커밋 수, CLOC(additions/deletions), 언어 비율 등을 산출한다.
 
 ---
 
 ## 2. Functional Requirements (FR)
 
-| ID | 요구사항 | 설명 |
-|----|----------|------|
-| FR-1 | 레포지토리 목록 조회 | 지정된 Org의 전체 레포지토리 목록을 가져온다 |
-| FR-2 | 커밋 수 집계 | 레포지토리별·기여자별 커밋 수를 집계한다 |
-| FR-3 | CLOC 산출 | additions, deletions 등 코드 변경량을 계산한다 |
-| FR-4 | 언어 비율 계산 | 레포지토리별·Org 전체의 언어 사용 비율을 산출한다 |
-| FR-5 | 리포트 출력 | 종합 통계를 터미널에 보기 좋게 출력한다 |
-| FR-6 | 기간 필터링 | 특정 기간(since/until)에 해당하는 통계만 조회한다 |
-| FR-7 | 기여자별 통계 | 기여자(author)별로 커밋 수·CLOC를 분류하여 보여준다 |
+| ID | 요구사항 | 상태 | 설명 |
+|----|----------|------|------|
+| FR-1 | 레포지토리 목록 조회 | ✅ | 지정된 Org의 전체 레포지토리 목록을 가져온다. 개인 계정 fallback 지원 |
+| FR-2 | 커밋 수 집계 | ✅ | 레포지토리별·기여자별 커밋 수를 집계한다 |
+| FR-3 | CLOC 산출 | ✅ | additions, deletions 등 코드 변경량을 계산한다 |
+| FR-4 | 언어 비율 계산 | ✅ | 레포지토리별·Org 전체의 언어 사용 비율을 산출한다 |
+| FR-5 | 리포트 출력 | ✅ | 종합 통계를 터미널 테이블, JSON, CSV로 출력한다 |
+| FR-6 | 기간 필터링 | ✅ | 특정 기간(since/until)에 해당하는 통계만 조회한다 |
+| FR-7 | 기여자별 통계 | ✅ | 기여자(author)별로 커밋 수·CLOC를 분류하여 보여준다 |
+| FR-8 | 포크 필터링 | ✅ | `--include-forks` 옵션으로 포크 레포 포함 여부를 제어한다 |
 
 ---
 
 ## 3. Non-Functional Requirements (NFR)
 
-| ID | 요구사항 | 설명 |
-|----|----------|------|
-| NFR-1 | Rate Limit 준수 | GitHub API rate limit을 초과하지 않도록 요청을 제어한다 |
-| NFR-2 | Clone 불필요 | git clone 없이 API만으로 모든 통계를 수집한다 |
-| NFR-3 | 응답 시간 | 비동기 처리로 대규모 Org에서도 합리적인 시간 내에 결과를 반환한다 |
-| NFR-4 | 캐싱 | 반복 조회 시 API 호출을 줄이기 위해 응답을 캐싱한다 |
-| NFR-5 | 에러 복구 | API 오류·네트워크 장애 시 재시도 및 graceful degradation을 지원한다 |
-| NFR-6 | 보안 | GitHub 토큰 등 민감 정보가 로그나 출력에 노출되지 않는다 |
+| ID | 요구사항 | 상태 | 설명 |
+|----|----------|------|------|
+| NFR-1 | Rate Limit 준수 | ✅ | `RateLimitMonitor`로 잔여 횟수 모니터링 및 자동 대기 |
+| NFR-2 | Clone 불필요 | ✅ | git clone 없이 REST API만으로 모든 통계를 수집한다 |
+| NFR-3 | 응답 시간 | ✅ | asyncio + Semaphore로 비동기 병렬 처리 |
+| NFR-4 | 캐싱 | ✅ | 파일 기반 TTL 캐싱 (1시간, `~/.cache/vibe-stats/`) |
+| NFR-5 | 에러 복구 | ✅ | 개별 레포 실패 시 graceful degradation, 202 응답 재시도 |
+| NFR-6 | 보안 | ✅ | GitHub 토큰 등 민감 정보가 로그나 출력에 노출되지 않는다 |
 
 ---
 
@@ -44,33 +45,35 @@
 │ Orchestrator│  워크플로우 조율, 비동기 실행
 └──────┬──────┘
        │
-  ┌────┴────┐
-  │         │
-┌─▼───┐ ┌──▼──────────┐
-│ API │ │    Data      │
-│Client│ │ Aggregator  │
-└─┬───┘ └──┬──────────┘
-  │         │
-  │    ┌────▼─────────┐
-  │    │   Report     │
-  │    │  Renderer    │
-  │    └──────────────┘
+  ┌────┴─────────┐
+  │              │
+┌─▼───┐   ┌─────▼──────┐
+│ API │   │    Data     │
+│Client│   │ Aggregator │
+└─┬───┘   └─────┬──────┘
+  │              │
+  │         ┌────▼────────┐
+  │         │   Report    │
+  │         │  Renderer   │
+  │         └─────────────┘
   │
-┌─▼────────────┐
-│  GitHub API  │
-│ (REST+GraphQL)│
-└──────────────┘
+┌─▼──────────┐   ┌───────────┐
+│ GitHub API │   │ FileCache │
+│  (REST)    │   │ (디스크)   │
+└────────────┘   └───────────┘
 ```
 
 ### 컴포넌트 설명
 
-| 컴포넌트 | 역할 |
-|----------|------|
-| **CLI Layer** | 사용자 입력 파싱, 인자 검증, 진행 상황 표시 |
-| **Orchestrator** | 전체 수집 흐름 조율, 비동기 태스크 관리 |
-| **GitHub API Client** | REST/GraphQL API 호출, rate limit 관리, 재시도 처리 |
-| **Data Aggregator** | 수집된 원시 데이터를 집계·변환하여 통계 모델 생성 |
-| **Report Renderer** | 집계된 데이터를 터미널 테이블·차트로 렌더링 |
+| 컴포넌트 | 파일 | 역할 |
+|----------|------|------|
+| **CLI Layer** | `cli.py` | 사용자 입력 파싱, 인자 검증, 날짜 형식 변환 |
+| **Orchestrator** | `orchestrator.py` | 전체 수집 흐름 조율, 출력 포맷 선택 |
+| **GitHub API Client** | `github/client.py` | REST API 호출, rate limit 관리, pagination, 재시도 처리 |
+| **Rate Limit Monitor** | `github/rate_limit.py` | `X-RateLimit-Remaining` 헤더 모니터링, 임계값 이하 시 자동 대기 |
+| **Data Aggregator** | `aggregator.py` | 수집된 원시 데이터를 집계·변환하여 통계 모델 생성 |
+| **Report Renderer** | `renderer.py` | 집계된 데이터를 터미널 테이블·JSON·CSV로 렌더링 |
+| **File Cache** | `cache.py` | SHA256 기반 파일 캐싱, TTL 만료 관리 |
 
 ---
 
@@ -78,26 +81,28 @@
 
 ### Clone 없이 통계 수집
 
-Git clone을 수행하지 않고 GitHub API만으로 통계를 산출한다.
+Git clone을 수행하지 않고 GitHub REST API만으로 통계를 산출한다.
 
 | 데이터 | API | 비고 |
 |--------|-----|------|
-| 레포 목록 | REST `GET /orgs/{org}/repos` | pagination 처리 필요 |
-| 커밋 목록 | REST `GET /repos/{owner}/{repo}/commits` | since/until 파라미터 활용 |
-| 커밋 상세 (CLOC) | REST `GET /repos/{owner}/{repo}/commits/{sha}` | additions/deletions 포함 |
-| 언어 비율 | REST `GET /repos/{owner}/{repo}/languages` | 바이트 단위 반환 |
-| 기여자 통계 | REST `GET /repos/{owner}/{repo}/stats/contributors` | 주간 단위 집계, 비동기 생성 |
-
-### REST + GraphQL 하이브리드 전략
-
-- **REST API**: 커밋 상세, 언어 비율, 기여자 통계 등 전용 엔드포인트가 있는 경우
-- **GraphQL API**: 여러 레포의 데이터를 한 번에 조회하여 API 호출 수를 절감할 때 활용
+| 레포 목록 | `GET /orgs/{org}/repos` | pagination, 404 시 `/users/{org}/repos` fallback |
+| 커밋 목록 | `GET /repos/{owner}/{repo}/commits` | since/until 파라미터, 409(빈 레포) 처리 |
+| 언어 비율 | `GET /repos/{owner}/{repo}/languages` | 바이트 단위 반환 |
+| 기여자 통계 | `GET /repos/{owner}/{repo}/stats/contributors` | 주간 단위 집계, 202/204 처리 |
 
 ### Rate Limit 관리
 
-- `X-RateLimit-Remaining` 헤더를 모니터링하여 잔여 횟수가 임계값 이하일 때 대기
-- 429 응답 시 `Retry-After` 헤더에 따라 자동 재시도
-- 동시 요청 수를 `asyncio.Semaphore`로 제한
+- `X-RateLimit-Remaining` 헤더를 모니터링하여 잔여 횟수가 임계값(10) 이하일 때 자동 대기
+- `X-RateLimit-Reset` 타임스탬프까지 sleep (+1초 버퍼)
+- 동시 요청 수를 `asyncio.Semaphore`(기본값 5)로 제한
+
+### 에러 처리
+
+- **404 (Org 미존재)**: `/users/{org}/repos`로 fallback하여 개인 계정 지원
+- **409 Conflict (빈 레포)**: 빈 리스트 반환, 정상 진행
+- **204 No Content**: 빈 기여자 통계, 정상 진행
+- **202 Accepted (통계 생성 중)**: exponential backoff 재시도 (최대 3회)
+- **개별 레포 실패**: `failed_repos`에 기록 후 나머지 레포 계속 처리
 
 ---
 
@@ -126,8 +131,8 @@ class RepoStats:
     total_commits: int
     total_additions: int
     total_deletions: int
-    languages: list[LanguageStats]
-    contributors: list[ContributorStats]
+    languages: list[LanguageStats]       # 기본값: []
+    contributors: list[ContributorStats] # 기본값: []
 
 @dataclass
 class OrgReport:
@@ -141,6 +146,7 @@ class OrgReport:
     languages: list[LanguageStats]
     contributors: list[ContributorStats]
     repos: list[RepoStats]
+    failed_repos: list[str]              # 수집 실패한 레포 목록
 ```
 
 ---
@@ -157,14 +163,17 @@ vibe-stats <org> [OPTIONS]
 
 ### 인자 및 옵션
 
-| 인자/옵션 | 타입 | 필수 | 설명 |
-|-----------|------|------|------|
-| `org` | string | Y | GitHub Organization 이름 |
-| `--token` | string | N | GitHub API 토큰 (미지정 시 `GITHUB_TOKEN` 환경변수 사용) |
-| `--since` | date | N | 집계 시작 날짜 (YYYY-MM-DD) |
-| `--until` | date | N | 집계 종료 날짜 (YYYY-MM-DD) |
-| `--format` | choice | N | 출력 형식: `table` (기본), `json`, `csv` |
-| `--top-n` | int | N | 상위 N명 기여자만 표시 |
+| 인자/옵션 | 타입 | 필수 | 기본값 | 설명 |
+|-----------|------|------|--------|------|
+| `org` | string | Y | - | GitHub Organization 이름 |
+| `--token` | string | N | `$GITHUB_TOKEN` | GitHub API 토큰 |
+| `--since` | string | N | - | 집계 시작 날짜 (YYYY-MM-DD) |
+| `--until` | string | N | - | 집계 종료 날짜 (YYYY-MM-DD) |
+| `--format` | choice | N | `table` | 출력 형식: `table`, `json`, `csv` |
+| `--top-n` | int | N | `10` | 상위 N명 기여자만 표시 |
+| `--include-forks` | flag | N | 꺼짐 | 포크된 레포 포함 |
+| `--no-cache` | flag | N | 꺼짐 | 캐시 비활성화 |
+| `--version` | flag | N | - | 버전 표시 |
 
 ### 출력 예시
 
@@ -203,12 +212,12 @@ vibe-stats <org> [OPTIONS]
 | 구분 | 기술 | 용도 |
 |------|------|------|
 | 언어 | Python 3.10+ | 타입 힌트, match 문 등 최신 문법 활용 |
-| HTTP 클라이언트 | httpx | async 지원, HTTP/2 지원 |
-| CLI 프레임워크 | click | 인자 파싱, 서브커맨드 지원 |
-| 터미널 UI | rich | 테이블, 프로그레스 바, 컬러 출력 |
+| HTTP 클라이언트 | httpx >=0.27 | async 지원, HTTP/2 지원 |
+| CLI 프레임워크 | click >=8.1 | 인자 파싱, 옵션 처리 |
+| 터미널 UI | rich >=13.0 | 테이블, 프로그레스 바, 컬러 출력 |
 | 비동기 | asyncio | 동시 API 호출로 성능 최적화 |
 | 테스트 | pytest + pytest-asyncio | 비동기 테스트 지원 |
-| 패키지 관리 | pyproject.toml | PEP 621 표준 |
+| 빌드 | hatchling | PEP 621 기반 패키지 빌드 |
 
 ---
 
@@ -219,24 +228,28 @@ vibe-stats/
 ├── pyproject.toml
 ├── README.md
 ├── ARCHITECTURE.md
+├── USAGE.md
+├── LICENSE
 ├── src/
 │   └── vibe_stats/
-│       ├── __init__.py
-│       ├── cli.py              # CLI 엔트리포인트 (click)
-│       ├── orchestrator.py     # 워크플로우 조율
-│       ├── github/
-│       │   ├── __init__.py
-│       │   ├── client.py       # GitHub API 클라이언트
-│       │   ├── graphql.py      # GraphQL 쿼리 헬퍼
-│       │   └── rate_limit.py   # Rate Limit 관리
-│       ├── models.py           # 데이터 모델 (dataclass)
-│       ├── aggregator.py       # 데이터 집계·변환
-│       └── renderer.py         # 리포트 렌더링 (rich)
+│       ├── __init__.py            # 버전 정보 (__version__)
+│       ├── cli.py                 # CLI 엔트리포인트 (click)
+│       ├── orchestrator.py        # 워크플로우 조율
+│       ├── models.py              # 데이터 모델 (dataclass)
+│       ├── aggregator.py          # 데이터 집계·변환
+│       ├── renderer.py            # 리포트 렌더링 (rich)
+│       ├── cache.py               # 파일 기반 TTL 캐싱
+│       └── github/
+│           ├── __init__.py
+│           ├── client.py          # GitHub REST API 클라이언트
+│           └── rate_limit.py      # Rate Limit 모니터링
 └── tests/
     ├── __init__.py
-    ├── test_client.py
-    ├── test_aggregator.py
-    └── test_renderer.py
+    ├── test_client.py             # API 클라이언트 테스트
+    ├── test_aggregator.py         # 집계 로직 테스트
+    ├── test_renderer.py           # 렌더러 테스트
+    ├── test_models.py             # 데이터 모델 테스트
+    └── test_cache.py              # 캐시 테스트
 ```
 
 ---
@@ -245,40 +258,10 @@ vibe-stats/
 
 | # | 항목 | 설명 | 대응 방안 |
 |---|------|------|-----------|
-| 1 | 10K+ 커밋 제한 | REST API pagination 상한으로 10,000건 이상 조회 불가 | GraphQL로 보완, 기간 분할 조회 |
-| 2 | Rate Limit | 인증 토큰 기준 시간당 5,000회 제한 | 요청 최적화, 캐싱, 조건부 요청(ETag) |
-| 3 | Stats API 지연 | `/stats/contributors`는 비동기 생성으로 202 응답 가능 | 재시도 로직 (backoff) 구현 |
+| 1 | 10K+ 커밋 제한 | REST API pagination 상한으로 10,000건 이상 조회 불가 | 기간 분할 조회로 우회 |
+| 2 | Rate Limit | 인증 토큰 기준 시간당 5,000회 제한 | RateLimitMonitor, 캐싱, Semaphore 제어 |
+| 3 | Stats API 지연 | `/stats/contributors`는 비동기 생성으로 202 응답 가능 | exponential backoff 재시도 (최대 3회) |
 | 4 | Private 레포 | 토큰 권한에 따라 접근 불가한 레포 존재 | 에러 무시 후 접근 가능한 레포만 집계 |
-| 5 | Fork 레포 | Fork된 레포 포함 시 통계 왜곡 가능 | `--include-forks` 옵션으로 제어 |
-| 6 | 대규모 Org | 수백 개 레포 보유 Org의 경우 처리 시간 증가 | 비동기 병렬 처리, 프로그레스 바 표시 |
-| 7 | API 변경 | GitHub API 스펙 변경 시 호환성 문제 | API 버전 헤더 명시, 응답 스키마 검증 |
-
----
-
-## 11. 구현 우선순위
-
-### Phase 1 — MVP
-
-- GitHub API 클라이언트 (REST) 구현
-- Org 레포 목록 조회
-- 레포별 커밋 수 집계
-- 언어 비율 조회
-- 기본 터미널 테이블 출력
-- CLI 인터페이스 (`org`, `--token`)
-
-### Phase 2 — 최적화
-
-- 비동기 병렬 처리 (asyncio + httpx)
-- Rate Limit 관리 및 자동 재시도
-- CLOC (additions/deletions) 집계
-- 기여자별 통계
-- 기간 필터링 (`--since`, `--until`)
-- 캐싱 레이어
-
-### Phase 3 — 고도화
-
-- GraphQL API 통합 (호출 수 절감)
-- JSON/CSV 출력 포맷
-- 프로그레스 바 및 상세 진행 표시
-- 에러 복구 및 부분 결과 출력
-- 설정 파일 지원 (`.vibe-stats.toml`)
+| 5 | Fork 레포 | Fork된 레포 포함 시 통계 왜곡 가능 | `--include-forks` 옵션으로 제어 (기본: 제외) |
+| 6 | 대규모 Org | 수백 개 레포 보유 Org의 경우 처리 시간 증가 | 비동기 병렬 처리, Rich 프로그레스 바 표시 |
+| 7 | API 변경 | GitHub API 스펙 변경 시 호환성 문제 | API 버전 헤더 `2022-11-28` 명시 |
