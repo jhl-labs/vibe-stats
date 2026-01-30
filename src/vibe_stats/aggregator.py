@@ -104,9 +104,19 @@ async def aggregate_org_report(
     since: str | None = None,
     until: str | None = None,
     include_forks: bool = False,
+    repo: str | None = None,
+    exclude_repos: list[str] | None = None,
 ) -> OrgReport:
-    """Aggregate statistics for all repos in an organization."""
-    repos = await client.list_repos(org, include_forks=include_forks)
+    """Aggregate statistics for all repos in an organization or a single repo."""
+    if repo:
+        # Single repo mode: fetch repo metadata to build a minimal dict
+        repos = [{"name": repo}]
+    else:
+        repos = await client.list_repos(org, include_forks=include_forks)
+
+    if exclude_repos:
+        excluded = set(exclude_repos)
+        repos = [r for r in repos if r["name"] not in excluded]
 
     repo_stats_list: list[RepoStats] = []
     failed_repos: list[str] = []

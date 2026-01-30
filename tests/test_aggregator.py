@@ -108,3 +108,28 @@ async def test_aggregate_include_forks(mock_client):
     """include_forks should be passed to list_repos."""
     await aggregate_org_report(mock_client, "org", include_forks=True)
     mock_client.list_repos.assert_called_once_with("org", include_forks=True)
+
+
+@pytest.mark.asyncio
+async def test_aggregate_single_repo(mock_client):
+    """When repo is specified, only that repo should be analyzed."""
+    report = await aggregate_org_report(mock_client, "org", repo="my-repo")
+    # Should NOT call list_repos when a specific repo is given
+    mock_client.list_repos.assert_not_called()
+    assert report.total_repos == 1
+    assert report.repos[0].name == "my-repo"
+
+
+@pytest.mark.asyncio
+async def test_aggregate_exclude_repos(mock_client):
+    """Excluded repos should be filtered out."""
+    report = await aggregate_org_report(mock_client, "org", exclude_repos=["repo2"])
+    assert report.total_repos == 1
+    assert report.repos[0].name == "repo1"
+
+
+@pytest.mark.asyncio
+async def test_aggregate_exclude_multiple_repos(mock_client):
+    """Multiple repos can be excluded."""
+    report = await aggregate_org_report(mock_client, "org", exclude_repos=["repo1", "repo2"])
+    assert report.total_repos == 0
