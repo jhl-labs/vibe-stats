@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections import defaultdict
+from datetime import datetime, timezone
 
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
@@ -46,7 +47,14 @@ async def _collect_repo_stats(
                 percentage=round(b / total_bytes * 100, 1) if total_bytes else 0,
             ))
 
-    # Contributors
+    # Contributors — filter weeks by since/until when provided
+    since_ts: float | None = None
+    until_ts: float | None = None
+    if since:
+        since_ts = datetime.fromisoformat(since.replace("Z", "+00:00")).timestamp()
+    if until:
+        until_ts = datetime.fromisoformat(until.replace("Z", "+00:00")).timestamp()
+
     contributors: list[ContributorStats] = []
     total_additions = 0
     total_deletions = 0
@@ -56,13 +64,24 @@ async def _collect_repo_stats(
             if not author:
                 continue
             weeks = c.get("weeks", [])
-            additions = sum(w.get("a", 0) for w in weeks)
-            deletions = sum(w.get("d", 0) for w in weeks)
+            filtered_weeks = []
+            for w in weeks:
+                week_start = w.get("w", 0)
+                if since_ts is not None and week_start + 7 * 86400 <= since_ts:
+                    continue
+                if until_ts is not None and week_start > until_ts:
+                    continue
+                filtered_weeks.append(w)
+            additions = sum(w.get("a", 0) for w in filtered_weeks)
+            deletions = sum(w.get("d", 0) for w in filtered_weeks)
+            commits = sum(w.get("c", 0) for w in filtered_weeks)
+            if commits == 0 and additions == 0 and deletions == 0:
+                continue
             total_additions += additions
             total_deletions += deletions
             contributors.append(ContributorStats(
                 username=author.get("login", "unknown"),
-                commits=c.get("total", 0),
+                commits=commits,
                 additions=additions,
                 deletions=deletions,
             ))

@@ -26,12 +26,12 @@ def mock_client():
         {
             "author": {"login": "alice"},
             "total": 10,
-            "weeks": [{"a": 100, "d": 50, "c": 5}],
+            "weeks": [{"w": 0, "a": 100, "d": 50, "c": 10}],
         },
         {
             "author": {"login": "bob"},
             "total": 5,
-            "weeks": [{"a": 40, "d": 20, "c": 3}],
+            "weeks": [{"w": 0, "a": 40, "d": 20, "c": 5}],
         },
     ]
     return client
