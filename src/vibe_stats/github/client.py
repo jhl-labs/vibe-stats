@@ -107,12 +107,20 @@ class GitHubClient:
     async def list_repos(
         self, org: str, include_forks: bool = False
     ) -> list[dict[str, Any]]:
-        """List all repositories for an organization."""
+        """List all repositories for an organization or user."""
         repo_type = "all" if include_forks else "sources"
-        return await self._cached_paginate(
-            f"/orgs/{org}/repos",
-            params={"type": repo_type, "sort": "updated"},
-        )
+        try:
+            return await self._cached_paginate(
+                f"/orgs/{org}/repos",
+                params={"type": repo_type, "sort": "updated"},
+            )
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                return await self._cached_paginate(
+                    f"/users/{org}/repos",
+                    params={"type": repo_type, "sort": "updated"},
+                )
+            raise
 
     async def list_commits(
         self, owner: str, repo: str, since: str | None = None, until: str | None = None
