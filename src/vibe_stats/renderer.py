@@ -1,6 +1,11 @@
-"""Rich-based terminal report renderer."""
+"""Rich-based terminal report renderer with JSON/CSV support."""
 
 from __future__ import annotations
+
+import csv
+import io
+import json
+from dataclasses import asdict
 
 from rich.console import Console
 from rich.panel import Panel
@@ -35,6 +40,14 @@ def render_report(report: OrgReport, top_n: int = 10) -> None:
         style="bold cyan",
     ))
     console.print()
+
+    # Failed repos warning
+    if report.failed_repos:
+        console.print(
+            f"[bold yellow]Warning:[/bold yellow] Failed to collect stats for "
+            f"{len(report.failed_repos)} repo(s): {', '.join(report.failed_repos)}"
+        )
+        console.print()
 
     # Summary
     console.print("[bold]Summary[/bold]")
@@ -87,3 +100,18 @@ def render_report(report: OrgReport, top_n: int = 10) -> None:
             )
         console.print(contrib_table)
         console.print()
+
+
+def render_json(report: OrgReport) -> None:
+    """Render an OrgReport as JSON to stdout."""
+    print(json.dumps(asdict(report), indent=2, ensure_ascii=False))
+
+
+def render_csv(report: OrgReport) -> None:
+    """Render contributor data as CSV to stdout."""
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["username", "commits", "additions", "deletions"])
+    for c in report.contributors:
+        writer.writerow([c.username, c.commits, c.additions, c.deletions])
+    print(output.getvalue(), end="")

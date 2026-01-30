@@ -43,3 +43,4 @@ class OrgReport:
     languages: list[LanguageStats] = field(default_factory=list)
     contributors: list[ContributorStats] = field(default_factory=list)
     repos: list[RepoStats] = field(default_factory=list)
+    failed_repos: list[str] = field(default_factory=list)

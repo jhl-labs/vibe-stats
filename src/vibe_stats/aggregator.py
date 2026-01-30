@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections import defaultdict
 
 from rich.progress import Progress, SpinnerColumn, TextColumn
@@ -10,17 +11,25 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from .github.client import GitHubClient
 from .models import ContributorStats, LanguageStats, OrgReport, RepoStats
 
+logger = logging.getLogger(__name__)
+
 
 async def _collect_repo_stats(
-    client: GitHubClient, owner: str, repo_name: str
+    client: GitHubClient,
+    owner: str,
+    repo_name: str,
+    since: str | None = None,
+    until: str | None = None,
 ) -> RepoStats:
     """Collect stats for a single repository."""
-    commits_task = asyncio.create_task(client.list_commits(owner, repo_name))
+    commits_task = asyncio.create_task(
+        client.list_commits(owner, repo_name, since=since, until=until)
+    )
     languages_task = asyncio.create_task(client.get_languages(owner, repo_name))
     contributors_task = asyncio.create_task(client.get_contributor_stats(owner, repo_name))
 
     commits, lang_bytes, raw_contributors = await asyncio.gather(
-        commits_task, languages_task, contributors_task, return_exceptions=True
+        commits_task, languages_task, contributors_task
     )
 
     # Commits
@@ -70,11 +79,18 @@ async def _collect_repo_stats(
     )
 
 
-async def aggregate_org_report(client: GitHubClient, org: str) -> OrgReport:
+async def aggregate_org_report(
+    client: GitHubClient,
+    org: str,
+    since: str | None = None,
+    until: str | None = None,
+    include_forks: bool = False,
+) -> OrgReport:
     """Aggregate statistics for all repos in an organization."""
-    repos = await client.list_repos(org)
+    repos = await client.list_repos(org, include_forks=include_forks)
 
     repo_stats_list: list[RepoStats] = []
+    failed_repos: list[str] = []
 
     with Progress(
         SpinnerColumn(),
@@ -83,15 +99,24 @@ async def aggregate_org_report(client: GitHubClient, org: str) -> OrgReport:
     ) as progress:
         task = progress.add_task(f"Collecting stats for {len(repos)} repos...", total=len(repos))
 
-        async def collect_and_update(repo: dict) -> RepoStats:
+        async def collect_and_update(repo: dict) -> RepoStats | None:
             name = repo["name"]
-            stats = await _collect_repo_stats(client, org, name)
-            progress.advance(task)
-            return stats
+            try:
+                stats = await _collect_repo_stats(
+                    client, org, name, since=since, until=until
+                )
+                return stats
+            except Exception:
+                logger.warning("Failed to collect stats for %s/%s", org, name)
+                failed_repos.append(name)
+                return None
+            finally:
+                progress.advance(task)
 
-        repo_stats_list = await asyncio.gather(
+        results = await asyncio.gather(
             *(collect_and_update(r) for r in repos)
         )
+        repo_stats_list = [r for r in results if r is not None]
 
     # Aggregate org-level stats
     total_commits = sum(r.total_commits for r in repo_stats_list)
@@ -136,8 +161,8 @@ async def aggregate_org_report(client: GitHubClient, org: str) -> OrgReport:
 
     return OrgReport(
         org=org,
-        period_start=None,
-        period_end=None,
+        period_start=since,
+        period_end=until,
         total_repos=len(repo_stats_list),
         total_commits=total_commits,
         total_additions=total_additions,
@@ -145,4 +170,5 @@ async def aggregate_org_report(client: GitHubClient, org: str) -> OrgReport:
         languages=org_languages,
         contributors=org_contributors,
         repos=repo_stats_list,
+        failed_repos=failed_repos,
     )

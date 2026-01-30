@@ -7,6 +7,7 @@ from typing import Any
 
 import httpx
 
+from ..cache import FileCache
 from .rate_limit import RateLimitMonitor
 
 BASE_URL = "https://api.github.com"
@@ -15,7 +16,9 @@ BASE_URL = "https://api.github.com"
 class GitHubClient:
     """Async GitHub REST API client with pagination and rate limit support."""
 
-    def __init__(self, token: str, concurrency: int = 5) -> None:
+    def __init__(
+        self, token: str, concurrency: int = 5, no_cache: bool = False
+    ) -> None:
         headers = {
             "Accept": "application/vnd.github+json",
             "Authorization": f"Bearer {token}",
@@ -28,6 +31,7 @@ class GitHubClient:
         )
         self._rate_limit = RateLimitMonitor()
         self._semaphore = asyncio.Semaphore(concurrency)
+        self._cache: FileCache | None = None if no_cache else FileCache()
 
     async def close(self) -> None:
         await self._client.aclose()
@@ -45,6 +49,35 @@ class GitHubClient:
             self._rate_limit.update(response)
             response.raise_for_status()
             return response
+
+    async def _cached_get_json(
+        self, url: str, params: dict[str, Any] | None = None
+    ) -> Any:
+        """GET with file cache support. Returns parsed JSON."""
+        if self._cache is not None:
+            cached = self._cache.get(url, params)
+            if cached is not None:
+                return cached
+        response = await self._get(url, params)
+        data = response.json()
+        if self._cache is not None:
+            self._cache.set(url, params, data)
+        return data
+
+    async def _cached_paginate(
+        self, url: str, params: dict[str, Any] | None = None
+    ) -> list[Any]:
+        """Paginate with file cache support."""
+        cache_params = dict(params or {})
+        if self._cache is not None:
+            cached = self._cache.get(url, cache_params)
+            if cached is not None:
+                return cached
+
+        results = await self._paginate(url, params)
+        if self._cache is not None:
+            self._cache.set(url, cache_params, results)
+        return results
 
     async def _paginate(self, url: str, params: dict[str, Any] | None = None) -> list[Any]:
         results: list[Any] = []
@@ -71,11 +104,14 @@ class GitHubClient:
 
         return results
 
-    async def list_repos(self, org: str) -> list[dict[str, Any]]:
+    async def list_repos(
+        self, org: str, include_forks: bool = False
+    ) -> list[dict[str, Any]]:
         """List all repositories for an organization."""
-        return await self._paginate(
+        repo_type = "all" if include_forks else "sources"
+        return await self._cached_paginate(
             f"/orgs/{org}/repos",
-            params={"type": "sources", "sort": "updated"},
+            params={"type": repo_type, "sort": "updated"},
         )
 
     async def list_commits(
@@ -87,20 +123,28 @@ class GitHubClient:
             params["since"] = since
         if until:
             params["until"] = until
-        return await self._paginate(f"/repos/{owner}/{repo}/commits", params=params)
+        return await self._cached_paginate(
+            f"/repos/{owner}/{repo}/commits", params=params
+        )
 
     async def get_languages(self, owner: str, repo: str) -> dict[str, int]:
         """Get language breakdown (bytes) for a repository."""
-        response = await self._get(f"/repos/{owner}/{repo}/languages")
-        return response.json()
+        return await self._cached_get_json(f"/repos/{owner}/{repo}/languages")
 
     async def get_contributor_stats(
         self, owner: str, repo: str, retries: int = 3
     ) -> list[dict[str, Any]]:
         """Get contributor statistics. Handles 202 (computing) with retries."""
+        url = f"/repos/{owner}/{repo}/stats/contributors"
+
+        if self._cache is not None:
+            cached = self._cache.get(url)
+            if cached is not None:
+                return cached
+
         for attempt in range(retries):
             try:
-                response = await self._get(f"/repos/{owner}/{repo}/stats/contributors")
+                response = await self._get(url)
             except httpx.HTTPStatusError as exc:
                 if exc.response.status_code == 202 and attempt < retries - 1:
                     await asyncio.sleep(2 ** attempt)
@@ -110,5 +154,8 @@ class GitHubClient:
                 await asyncio.sleep(2 ** attempt)
                 continue
             data = response.json()
-            return data if isinstance(data, list) else []
+            result = data if isinstance(data, list) else []
+            if self._cache is not None:
+                self._cache.set(url, None, result)
+            return result
         return []
