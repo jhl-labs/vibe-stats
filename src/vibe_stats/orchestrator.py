@@ -16,11 +16,14 @@ async def run(
     include_forks: bool = False,
     output_format: str = "table",
     no_cache: bool = False,
+    repo: str | None = None,
+    exclude_repos: list[str] | None = None,
 ) -> None:
     """Main pipeline: fetch data, aggregate, render."""
     async with GitHubClient(token=token, no_cache=no_cache) as client:
         report = await aggregate_org_report(
-            client, org, since=since, until=until, include_forks=include_forks
+            client, org, since=since, until=until, include_forks=include_forks,
+            repo=repo, exclude_repos=exclude_repos,
         )
 
     if output_format == "json":

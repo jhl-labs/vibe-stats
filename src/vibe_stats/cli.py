@@ -10,7 +10,7 @@ from . import __version__
 
 
 @click.command()
-@click.argument("org")
+@click.argument("target")
 @click.option(
     "--token",
     envvar="GITHUB_TOKEN",
@@ -30,9 +30,14 @@ from . import __version__
     help="Output format",
 )
 @click.option("--no-cache", is_flag=True, default=False, help="Disable caching")
+@click.option(
+    "--exclude-repo",
+    multiple=True,
+    help="Exclude specific repositories (can be specified multiple times)",
+)
 @click.version_option(version=__version__)
 def main(
-    org: str,
+    target: str,
     token: str,
     top_n: int,
     since: str | None,
@@ -40,8 +45,19 @@ def main(
     include_forks: bool,
     output_format: str,
     no_cache: bool,
+    exclude_repo: tuple[str, ...],
 ) -> None:
-    """Collect and display GitHub Organization statistics."""
+    """Collect and display GitHub contribution statistics.
+
+    TARGET can be an org/user name (e.g. "myorg") or a specific repo (e.g. "myorg/myrepo").
+    """
+    # Parse target: org or org/repo
+    if "/" in target:
+        org, repo = target.split("/", 1)
+    else:
+        org = target
+        repo = None
+
     # Convert YYYY-MM-DD to ISO 8601 for GitHub API
     iso_since = f"{since}T00:00:00Z" if since else None
     iso_until = f"{until}T23:59:59Z" if until else None
@@ -57,6 +73,8 @@ def main(
         include_forks=include_forks,
         output_format=output_format,
         no_cache=no_cache,
+        repo=repo,
+        exclude_repos=list(exclude_repo),
     ))
 
 
