@@ -1,7 +1,7 @@
 # vibe-stats
 
-[![CI](https://github.com/declue/vibe-stats/actions/workflows/ci.yml/badge.svg)](https://github.com/declue/vibe-stats/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/declue/vibe-stats/graph/badge.svg)](https://codecov.io/gh/declue/vibe-stats)
+[![CI](https://github.com/jhl-labs/vibe-stats/actions/workflows/ci.yml/badge.svg)](https://github.com/jhl-labs/vibe-stats/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/jhl-labs/vibe-stats/graph/badge.svg)](https://codecov.io/gh/jhl-labs/vibe-stats)
 
 GitHub Organization의 코드 기여 통계를 수집·분석하는 CLI 도구입니다.
 
