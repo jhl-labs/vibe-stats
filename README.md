@@ -1,5 +1,8 @@
 # vibe-stats
 
+[![CI](https://github.com/declue/vibe-stats/actions/workflows/ci.yml/badge.svg)](https://github.com/declue/vibe-stats/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/declue/vibe-stats/graph/badge.svg)](https://codecov.io/gh/declue/vibe-stats)
+
 GitHub Organization의 코드 기여 통계를 수집·분석하는 CLI 도구입니다.
 
 Git clone 없이 GitHub REST API만으로 커밋 수, 코드 변경량(additions/deletions), 언어 비율, 기여자별 통계를 산출합니다.
@@ -60,10 +63,15 @@ vibe-stats <org> [OPTIONS]
 |------|--------|------|
 | `--token TEXT` | `$GITHUB_TOKEN` | GitHub API 토큰 |
 | `--top-n INTEGER` | `10` | 상위 기여자 표시 수 |
-| `--since TEXT` | - | 시작 날짜 (YYYY-MM-DD) |
-| `--until TEXT` | - | 종료 날짜 (YYYY-MM-DD) |
+| `--since TEXT` | - | 시작 날짜 (YYYY-MM-DD 또는 7d, 2w, 3m, 1y) |
+| `--until TEXT` | - | 종료 날짜 (YYYY-MM-DD 또는 7d, 2w, 3m, 1y) |
 | `--include-forks` | 꺼짐 | 포크된 레포 포함 |
 | `--format [table\|json\|csv]` | `table` | 출력 포맷 |
+| `--sort-by [commits\|additions\|deletions\|lines]` | `commits` | 기여자 정렬 기준 |
+| `--exclude-bots` | 꺼짐 | 봇 계정 제외 |
+| `--min-commits INTEGER` | `0` | 최소 커밋 수 필터 |
+| `--output PATH` | - | 결과를 파일로 저장 |
+| `--exclude-repo TEXT` | - | 특정 레포 제외 (여러 번 지정 가능) |
 | `--no-cache` | 꺼짐 | 캐시 비활성화 |
 
 자세한 사용법은 [USAGE.md](USAGE.md)를 참고하세요.
