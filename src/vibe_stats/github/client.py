@@ -174,3 +174,46 @@ class GitHubClient:
                 self._cache.set(url, None, result)
             return result
         return []
+
+    async def list_pull_requests(
+        self,
+        owner: str,
+        repo: str,
+        state: str = "all",
+        since: str | None = None,
+        until: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """List pull requests for a repository."""
+        params: dict[str, Any] = {"state": state, "sort": "created", "direction": "desc"}
+        results = await self._cached_paginate(
+            f"/repos/{owner}/{repo}/pulls", params=params
+        )
+        # Filter by since/until on created_at
+        if since or until:
+            filtered = []
+            for pr in results:
+                created = pr.get("created_at", "")
+                if since and created < since:
+                    continue
+                if until and created > until:
+                    continue
+                filtered.append(pr)
+            return filtered
+        return results
+
+    async def list_issues(
+        self,
+        owner: str,
+        repo: str,
+        state: str = "open",
+        since: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """List issues (excluding pull requests) for a repository."""
+        params: dict[str, Any] = {"state": state, "sort": "created", "direction": "desc"}
+        if since:
+            params["since"] = since
+        results = await self._cached_paginate(
+            f"/repos/{owner}/{repo}/issues", params=params
+        )
+        # GitHub issues API includes PRs; filter them out
+        return [i for i in results if "pull_request" not in i]

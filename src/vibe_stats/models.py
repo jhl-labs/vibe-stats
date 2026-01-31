@@ -27,6 +27,9 @@ class RepoStats:
     total_commits: int
     total_additions: int
     total_deletions: int
+    open_prs: int = 0
+    merged_prs: int = 0
+    open_issues: int = 0
     languages: list[LanguageStats] = field(default_factory=list)
     contributors: list[ContributorStats] = field(default_factory=list)
 
@@ -40,6 +43,9 @@ class OrgReport:
     total_commits: int
     total_additions: int
     total_deletions: int
+    total_open_prs: int = 0
+    total_merged_prs: int = 0
+    total_open_issues: int = 0
     languages: list[LanguageStats] = field(default_factory=list)
     contributors: list[ContributorStats] = field(default_factory=list)
     repos: list[RepoStats] = field(default_factory=list)

@@ -6,8 +6,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from vibe_stats.aggregator import aggregate_org_report
+from vibe_stats.aggregator import _is_bot, _sort_key, aggregate_org_report
 from vibe_stats.github.client import GitHubClient
+from vibe_stats.models import ContributorStats
 
 
 @pytest.fixture
@@ -33,6 +34,13 @@ def mock_client():
             "total": 5,
             "weeks": [{"a": 40, "d": 20, "c": 3}],
         },
+    ]
+    client.list_pull_requests.return_value = [
+        {"state": "open", "merged_at": None, "created_at": "2024-06-01T00:00:00Z"},
+        {"state": "closed", "merged_at": "2024-07-01T00:00:00Z", "created_at": "2024-06-15T00:00:00Z"},
+    ]
+    client.list_issues.return_value = [
+        {"state": "open", "title": "Bug"},
     ]
     return client
 
@@ -81,6 +89,8 @@ async def test_aggregate_error_recovery():
     client.list_commits.side_effect = commits_side_effect
     client.get_languages.return_value = {"Python": 1000}
     client.get_contributor_stats.return_value = []
+    client.list_pull_requests.return_value = []
+    client.list_issues.return_value = []
 
     report = await aggregate_org_report(client, "org")
 
@@ -133,3 +143,112 @@ async def test_aggregate_exclude_multiple_repos(mock_client):
     """Multiple repos can be excluded."""
     report = await aggregate_org_report(mock_client, "org", exclude_repos=["repo1", "repo2"])
     assert report.total_repos == 0
+
+
+# --- New feature tests ---
+
+
+def test_is_bot_with_bot_suffix():
+    assert _is_bot("dependabot[bot]") is True
+    assert _is_bot("renovate[bot]") is True
+    assert _is_bot("SomeBot[bot]") is True
+
+
+def test_is_bot_known_bots():
+    assert _is_bot("dependabot") is True
+    assert _is_bot("renovate") is True
+    assert _is_bot("github-actions") is True
+    assert _is_bot("codecov") is True
+    assert _is_bot("snyk-bot") is True
+
+
+def test_is_bot_regular_users():
+    assert _is_bot("alice") is False
+    assert _is_bot("bob") is False
+    assert _is_bot("my-bot-project") is False
+
+
+def test_sort_key_commits():
+    key_fn = _sort_key("commits")
+    c = ContributorStats(username="a", commits=10, additions=20, deletions=5)
+    assert key_fn(c) == 10
+
+
+def test_sort_key_additions():
+    key_fn = _sort_key("additions")
+    c = ContributorStats(username="a", commits=10, additions=20, deletions=5)
+    assert key_fn(c) == 20
+
+
+def test_sort_key_deletions():
+    key_fn = _sort_key("deletions")
+    c = ContributorStats(username="a", commits=10, additions=20, deletions=5)
+    assert key_fn(c) == 5
+
+
+def test_sort_key_lines():
+    key_fn = _sort_key("lines")
+    c = ContributorStats(username="a", commits=10, additions=20, deletions=5)
+    assert key_fn(c) == 25
+
+
+@pytest.mark.asyncio
+async def test_aggregate_exclude_bots(mock_client):
+    """Bot contributors should be excluded when exclude_bots=True."""
+    mock_client.get_contributor_stats.return_value = [
+        {
+            "author": {"login": "alice"},
+            "total": 10,
+            "weeks": [{"w": 0, "a": 100, "d": 50, "c": 10}],
+        },
+        {
+            "author": {"login": "dependabot[bot]"},
+            "total": 3,
+            "weeks": [{"w": 0, "a": 10, "d": 5, "c": 3}],
+        },
+        {
+            "author": {"login": "renovate"},
+            "total": 2,
+            "weeks": [{"w": 0, "a": 5, "d": 2, "c": 2}],
+        },
+    ]
+    report = await aggregate_org_report(mock_client, "org", exclude_bots=True)
+    usernames = [c.username for c in report.contributors]
+    assert "alice" in usernames
+    assert "dependabot[bot]" not in usernames
+    assert "renovate" not in usernames
+
+
+@pytest.mark.asyncio
+async def test_aggregate_sort_by_additions(mock_client):
+    """Contributors should be sorted by additions when sort_by='additions'."""
+    report = await aggregate_org_report(mock_client, "org", sort_by="additions")
+    # alice has 200 additions (100*2 repos), bob has 80 (40*2 repos)
+    assert report.contributors[0].username == "alice"
+    assert report.contributors[1].username == "bob"
+
+
+@pytest.mark.asyncio
+async def test_aggregate_min_commits(mock_client):
+    """Contributors below min_commits threshold should be excluded."""
+    # alice: 20 commits (10*2), bob: 10 commits (5*2)
+    report = await aggregate_org_report(mock_client, "org", min_commits=15)
+    assert len(report.contributors) == 1
+    assert report.contributors[0].username == "alice"
+
+
+@pytest.mark.asyncio
+async def test_aggregate_min_commits_zero_no_filter(mock_client):
+    """min_commits=0 should not filter any contributors."""
+    report = await aggregate_org_report(mock_client, "org", min_commits=0)
+    assert len(report.contributors) == 2
+
+
+@pytest.mark.asyncio
+async def test_aggregate_pr_issue_stats(mock_client):
+    """PR and issue stats should be aggregated."""
+    report = await aggregate_org_report(mock_client, "org")
+    # 2 repos, each with 1 open PR, 1 merged PR, 1 open issue
+    assert report.total_open_prs == 2
+    assert report.total_merged_prs == 2
+    assert report.total_open_issues == 2
