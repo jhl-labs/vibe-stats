@@ -24,10 +24,8 @@ def _parse_relative_date(value: str) -> str | None:
         delta = timedelta(weeks=amount)
     elif unit == "m":
         delta = timedelta(days=amount * 30)
-    elif unit == "y":
+    else:  # unit == "y"
         delta = timedelta(days=amount * 365)
-    else:
-        return None
     target = datetime.now() - delta
     return target.strftime("%Y-%m-%d")
 
@@ -133,5 +131,5 @@ def main(
     ))
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     main()

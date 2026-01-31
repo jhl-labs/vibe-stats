@@ -42,3 +42,30 @@ def test_cache_different_params(tmp_path):
     cache.set("/url", {"a": "2"}, "second")
     assert cache.get("/url", {"a": "1"}) == "first"
     assert cache.get("/url", {"a": "2"}) == "second"
+
+
+def test_cache_get_corrupted_json(tmp_path):
+    """Should return None when cached file contains invalid JSON."""
+    cache = FileCache(cache_dir=tmp_path, ttl=3600)
+    cache.set("/test/url", None, "data")
+    # Corrupt the file
+    key = FileCache._make_key("/test/url", None)
+    path = tmp_path / f"{key}.json"
+    path.write_text("not valid json{{{")
+    result = cache.get("/test/url", None)
+    assert result is None
+
+
+def test_cache_set_oserror(tmp_path):
+    """Should not raise when write fails (e.g. read-only path)."""
+    # Use a non-writable directory
+    import os
+    readonly_dir = tmp_path / "readonly"
+    readonly_dir.mkdir()
+    cache = FileCache(cache_dir=readonly_dir, ttl=3600)
+    os.chmod(readonly_dir, 0o444)
+    try:
+        # Should not raise
+        cache.set("/test/url", None, "data")
+    finally:
+        os.chmod(readonly_dir, 0o755)

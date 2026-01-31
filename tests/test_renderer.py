@@ -167,3 +167,25 @@ def test_render_report_to_file():
         assert "test-org" in content
     finally:
         os.unlink(path)
+
+
+def test_render_report_with_period(capsys):
+    """render_report should show period when start/end are set."""
+    report = _make_report(
+        period_start="2024-01-01T00:00:00Z",
+        period_end="2024-12-31T23:59:59Z",
+    )
+    render_report(report, top_n=5)
+    captured = capsys.readouterr()
+    assert "Period:" in captured.out
+    assert "2024-01-01" in captured.out
+
+
+def test_render_report_sort_by_lines(capsys):
+    """render_report should show Lines column when sort_by=lines."""
+    report = _make_report()
+    render_report(report, top_n=5, sort_by="lines")
+    captured = capsys.readouterr()
+    assert "Lines" in captured.out
+    # alice: 70+30=100
+    assert "100" in captured.out

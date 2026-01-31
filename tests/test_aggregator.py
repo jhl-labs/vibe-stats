@@ -252,3 +252,47 @@ async def test_aggregate_pr_issue_stats(mock_client):
     assert report.total_open_prs == 2
     assert report.total_merged_prs == 2
     assert report.total_open_issues == 2
+
+
+@pytest.mark.asyncio
+async def test_aggregate_contributor_no_author(mock_client):
+    """Contributors with no author should be skipped."""
+    mock_client.get_contributor_stats.return_value = [
+        {
+            "author": None,
+            "total": 5,
+            "weeks": [{"w": 0, "a": 10, "d": 5, "c": 5}],
+        },
+        {
+            "author": {"login": "alice"},
+            "total": 10,
+            "weeks": [{"w": 0, "a": 100, "d": 50, "c": 10}],
+        },
+    ]
+    report = await aggregate_org_report(mock_client, "org", repo="single-repo")
+    # Only alice should appear (None author skipped)
+    assert len(report.contributors) == 1
+    assert report.contributors[0].username == "alice"
+
+
+@pytest.mark.asyncio
+async def test_aggregate_contributor_until_filter(mock_client):
+    """Contributors with weeks after until should be filtered."""
+    # week_start=2000000000 is far in the future (~2033)
+    mock_client.get_contributor_stats.return_value = [
+        {
+            "author": {"login": "alice"},
+            "total": 10,
+            "weeks": [
+                {"w": 1704067200, "a": 50, "d": 20, "c": 5},  # 2024-01-01
+                {"w": 2000000000, "a": 50, "d": 30, "c": 5},  # far future
+            ],
+        },
+    ]
+    report = await aggregate_org_report(
+        mock_client, "org", repo="single-repo",
+        until="2024-12-31T23:59:59Z",
+    )
+    # Only the first week should count (second week is after until)
+    assert report.contributors[0].additions == 50
+    assert report.contributors[0].commits == 5
