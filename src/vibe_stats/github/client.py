@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 from ..cache import FileCache
 from .rate_limit import RateLimitMonitor
@@ -145,7 +148,7 @@ class GitHubClient:
         return await self._cached_get_json(f"/repos/{owner}/{repo}/languages")
 
     async def get_contributor_stats(
-        self, owner: str, repo: str, retries: int = 3
+        self, owner: str, repo: str, retries: int = 8
     ) -> list[dict[str, Any]]:
         """Get contributor statistics. Handles 202 (computing) with retries."""
         url = f"/repos/{owner}/{repo}/stats/contributors"
@@ -160,17 +163,33 @@ class GitHubClient:
                 response = await self._get(url)
             except httpx.HTTPStatusError as exc:
                 if exc.response.status_code == 202 and attempt < retries - 1:
-                    await asyncio.sleep(2 ** attempt)
+                    delay = min(2 ** (attempt + 1), 30)
+                    logger.info(
+                        "%s/%s: stats computing (attempt %d/%d), retry in %ds",
+                        owner, repo, attempt + 1, retries, delay,
+                    )
+                    await asyncio.sleep(delay)
                     continue
                 raise
             if response.status_code == 204:
                 return []
-            if response.status_code == 202 and attempt < retries - 1:
-                await asyncio.sleep(2 ** attempt)
-                continue
+            if response.status_code == 202:
+                if attempt < retries - 1:
+                    delay = min(2 ** (attempt + 1), 30)
+                    logger.info(
+                        "%s/%s: stats computing (attempt %d/%d), retry in %ds",
+                        owner, repo, attempt + 1, retries, delay,
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+                logger.warning(
+                    "%s/%s: stats still computing after %d attempts, skipping",
+                    owner, repo, retries,
+                )
+                return []
             data = response.json()
             result = data if isinstance(data, list) else []
-            if self._cache is not None:
+            if self._cache is not None and result:
                 self._cache.set(url, None, result)
             return result
         return []
