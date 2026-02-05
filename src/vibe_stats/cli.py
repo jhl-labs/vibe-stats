@@ -48,10 +48,22 @@ def _resolve_date(value: str | None) -> str | None:
     required=True,
     help="GitHub API token (default: $GITHUB_TOKEN)",
 )
-@click.option("--top-n", default=10, show_default=True, help="Number of top contributors to show")
-@click.option("--since", default=None, help="Start date filter (YYYY-MM-DD or relative: 7d, 2w, 3m, 1y)")
-@click.option("--until", default=None, help="End date filter (YYYY-MM-DD or relative: 7d, 2w, 3m, 1y)")
-@click.option("--include-forks", is_flag=True, default=False, help="Include forked repositories")
+@click.option(
+    "--top-n", default=10, show_default=True, help="Number of top contributors to show"
+)
+@click.option(
+    "--since",
+    default=None,
+    help="Start date filter (YYYY-MM-DD or relative: 7d, 2w, 3m, 1y)",
+)
+@click.option(
+    "--until",
+    default=None,
+    help="End date filter (YYYY-MM-DD or relative: 7d, 2w, 3m, 1y)",
+)
+@click.option(
+    "--include-forks", is_flag=True, default=False, help="Include forked repositories"
+)
 @click.option(
     "--format",
     "output_format",
@@ -68,14 +80,43 @@ def _resolve_date(value: str | None) -> str | None:
 )
 @click.option(
     "--sort-by",
-    type=click.Choice(["commits", "additions", "deletions", "lines"], case_sensitive=False),
+    type=click.Choice(
+        ["commits", "additions", "deletions", "lines"], case_sensitive=False
+    ),
     default="commits",
     show_default=True,
     help="Sort contributors by this metric",
 )
-@click.option("--exclude-bots", is_flag=True, default=False, help="Exclude bot accounts from contributors")
-@click.option("--min-commits", default=0, show_default=True, help="Minimum commits to include a contributor")
-@click.option("--output", "output_file", default=None, type=click.Path(), help="Save output to file")
+@click.option(
+    "--exclude-bots",
+    is_flag=True,
+    default=False,
+    help="Exclude bot accounts from contributors",
+)
+@click.option(
+    "--min-commits",
+    default=0,
+    show_default=True,
+    help="Minimum commits to include a contributor",
+)
+@click.option(
+    "--output",
+    "output_file",
+    default=None,
+    type=click.Path(),
+    help="Save output to file",
+)
+@click.option(
+    "--api-url",
+    default=None,
+    help="GitHub API base URL (e.g., https://your-github-enterprise.com/api/v3)",
+)
+@click.option(
+    "--no-ssl-verify",
+    is_flag=True,
+    default=False,
+    help="Disable SSL certificate verification (for self-signed certificates)",
+)
 @click.version_option(version=__version__)
 def main(
     target: str,
@@ -91,6 +132,8 @@ def main(
     exclude_bots: bool,
     min_commits: int,
     output_file: str | None,
+    api_url: str | None,
+    no_ssl_verify: bool,
 ) -> None:
     """Collect and display GitHub contribution statistics.
 
@@ -113,22 +156,24 @@ def main(
 
     from .orchestrator import run
 
-    asyncio.run(run(
-        org=org,
-        token=token,
-        top_n=top_n,
-        since=iso_since,
-        until=iso_until,
-        include_forks=include_forks,
-        output_format=output_format,
-        no_cache=no_cache,
-        repo=repo,
-        exclude_repos=list(exclude_repo),
-        sort_by=sort_by,
-        exclude_bots=exclude_bots,
-        min_commits=min_commits,
-        output_file=output_file,
-    ))
+    asyncio.run(
+        run(
+            org=org,
+            token=token,
+            top_n=top_n,
+            since=iso_since,
+            until=iso_until,
+            include_forks=include_forks,
+            output_format=output_format,
+            no_cache=no_cache,
+            repo=repo,
+            exclude_repos=list(exclude_repo),
+            sort_by=sort_by,
+            exclude_bots=exclude_bots,
+            min_commits=min_commits,
+            output_file=output_file,
+        )
+    )
 
 
 if __name__ == "__main__":  # pragma: no cover

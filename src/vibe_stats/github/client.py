@@ -20,7 +20,12 @@ class GitHubClient:
     """Async GitHub REST API client with pagination and rate limit support."""
 
     def __init__(
-        self, token: str, concurrency: int = 5, no_cache: bool = False
+        self,
+        token: str,
+        concurrency: int = 5,
+        no_cache: bool = False,
+        base_url: str | None = None,
+        verify_ssl: bool = True,
     ) -> None:
         headers = {
             "Accept": "application/vnd.github+json",
@@ -28,9 +33,10 @@ class GitHubClient:
             "X-GitHub-Api-Version": "2022-11-28",
         }
         self._client = httpx.AsyncClient(
-            base_url=BASE_URL,
+            base_url=base_url or BASE_URL,
             headers=headers,
             timeout=30.0,
+            verify=verify_ssl,
         )
         self._rate_limit = RateLimitMonitor()
         self._semaphore = asyncio.Semaphore(concurrency)
@@ -45,7 +51,9 @@ class GitHubClient:
     async def __aexit__(self, *exc: object) -> None:
         await self.close()
 
-    async def _get(self, url: str, params: dict[str, Any] | None = None) -> httpx.Response:
+    async def _get(
+        self, url: str, params: dict[str, Any] | None = None
+    ) -> httpx.Response:
         async with self._semaphore:
             await self._rate_limit.wait_if_needed()
             response = await self._client.get(url, params=params)
@@ -82,7 +90,9 @@ class GitHubClient:
             self._cache.set(url, cache_params, results)
         return results
 
-    async def _paginate(self, url: str, params: dict[str, Any] | None = None) -> list[Any]:
+    async def _paginate(
+        self, url: str, params: dict[str, Any] | None = None
+    ) -> list[Any]:
         results: list[Any] = []
         params = dict(params or {})
         params.setdefault("per_page", 100)
@@ -166,7 +176,11 @@ class GitHubClient:
                     delay = min(2 ** (attempt + 1), 30)
                     logger.info(
                         "%s/%s: stats computing (attempt %d/%d), retry in %ds",
-                        owner, repo, attempt + 1, retries, delay,
+                        owner,
+                        repo,
+                        attempt + 1,
+                        retries,
+                        delay,
                     )
                     await asyncio.sleep(delay)
                     continue
@@ -178,13 +192,19 @@ class GitHubClient:
                     delay = min(2 ** (attempt + 1), 30)
                     logger.info(
                         "%s/%s: stats computing (attempt %d/%d), retry in %ds",
-                        owner, repo, attempt + 1, retries, delay,
+                        owner,
+                        repo,
+                        attempt + 1,
+                        retries,
+                        delay,
                     )
                     await asyncio.sleep(delay)
                     continue
                 logger.warning(
                     "%s/%s: stats still computing after %d attempts, skipping",
-                    owner, repo, retries,
+                    owner,
+                    repo,
+                    retries,
                 )
                 return []
             data = response.json()
@@ -203,7 +223,11 @@ class GitHubClient:
         until: str | None = None,
     ) -> list[dict[str, Any]]:
         """List pull requests for a repository."""
-        params: dict[str, Any] = {"state": state, "sort": "created", "direction": "desc"}
+        params: dict[str, Any] = {
+            "state": state,
+            "sort": "created",
+            "direction": "desc",
+        }
         results = await self._cached_paginate(
             f"/repos/{owner}/{repo}/pulls", params=params
         )
@@ -228,7 +252,11 @@ class GitHubClient:
         since: str | None = None,
     ) -> list[dict[str, Any]]:
         """List issues (excluding pull requests) for a repository."""
-        params: dict[str, Any] = {"state": state, "sort": "created", "direction": "desc"}
+        params: dict[str, Any] = {
+            "state": state,
+            "sort": "created",
+            "direction": "desc",
+        }
         if since:
             params["since"] = since
         results = await self._cached_paginate(

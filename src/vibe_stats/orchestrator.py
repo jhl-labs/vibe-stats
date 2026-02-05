@@ -22,13 +22,24 @@ async def run(
     exclude_bots: bool = False,
     min_commits: int = 0,
     output_file: str | None = None,
+    api_url: str | None = None,
+    verify_ssl: bool = True,
 ) -> None:
     """Main pipeline: fetch data, aggregate, render."""
-    async with GitHubClient(token=token, no_cache=no_cache) as client:
+    async with GitHubClient(
+        token=token, no_cache=no_cache, base_url=api_url, verify_ssl=verify_ssl
+    ) as client:
         report = await aggregate_org_report(
-            client, org, since=since, until=until, include_forks=include_forks,
-            repo=repo, exclude_repos=exclude_repos,
-            sort_by=sort_by, exclude_bots=exclude_bots, min_commits=min_commits,
+            client,
+            org,
+            since=since,
+            until=until,
+            include_forks=include_forks,
+            repo=repo,
+            exclude_repos=exclude_repos,
+            sort_by=sort_by,
+            exclude_bots=exclude_bots,
+            min_commits=min_commits,
         )
 
     if output_format == "json":
