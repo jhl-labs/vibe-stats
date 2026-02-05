@@ -32,13 +32,15 @@ class GitHubClient:
             "Authorization": f"Bearer {token}",
             "X-GitHub-Api-Version": "2022-11-28",
         }
-        self._client = httpx.AsyncClient(
-            base_url=base_url or BASE_URL,
-            headers=headers,
-            timeout=30.0,
-            verify=verify_ssl,
-            http2=verify_ssl,
-        )
+        client_kwargs = {
+            "base_url": base_url or BASE_URL,
+            "headers": headers,
+            "timeout": 30.0,
+            "verify": verify_ssl,
+        }
+        if not verify_ssl:
+            client_kwargs["http2"] = False
+        self._client = httpx.AsyncClient(**client_kwargs)
         self._rate_limit = RateLimitMonitor()
         self._semaphore = asyncio.Semaphore(concurrency)
         self._cache: FileCache | None = None if no_cache else FileCache()
@@ -126,7 +128,10 @@ class GitHubClient:
 
         while next_url is not None:
             response = await self._get(next_url, params)
-            data = response.json()
+            try:
+                data = response.json()
+            except Exception:
+                data = []
             if isinstance(data, list):
                 results.extend(data)
             else:
@@ -233,7 +238,10 @@ class GitHubClient:
                     retries,
                 )
                 return []
-            data = response.json()
+            try:
+                data = response.json()
+            except Exception:
+                data = []
             result = data if isinstance(data, list) else []
             if self._cache is not None and result:
                 self._cache.set(url, None, result)

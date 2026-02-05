@@ -136,9 +136,15 @@ async def _collect_repo_stats(
     since_ts: float | None = None
     until_ts: float | None = None
     if since:
-        since_ts = datetime.fromisoformat(since.replace("Z", "+00:00")).timestamp()
+        try:
+            since_ts = datetime.fromisoformat(since.replace("Z", "+00:00")).timestamp()
+        except Exception:
+            pass
     if until:
-        until_ts = datetime.fromisoformat(until.replace("Z", "+00:00")).timestamp()
+        try:
+            until_ts = datetime.fromisoformat(until.replace("Z", "+00:00")).timestamp()
+        except Exception:
+            pass
 
     contributors: list[ContributorStats] = []
     total_additions = 0
