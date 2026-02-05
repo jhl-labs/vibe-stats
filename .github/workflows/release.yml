@@ -23,7 +23,13 @@ jobs:
       - name: Install build dependencies
         run: |
           python -m pip install --upgrade pip
+          pip install --upgrade certifi
           pip install build
+
+      - name: Update CA certificates
+        run: |
+          pip install certifi
+          python -c "import certifi; print(certifi.where())"
 
       - name: Build package
         run: python -m build

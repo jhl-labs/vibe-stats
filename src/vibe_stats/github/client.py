@@ -37,6 +37,7 @@ class GitHubClient:
             headers=headers,
             timeout=30.0,
             verify=verify_ssl,
+            http2=verify_ssl,
         )
         self._rate_limit = RateLimitMonitor()
         self._semaphore = asyncio.Semaphore(concurrency)
