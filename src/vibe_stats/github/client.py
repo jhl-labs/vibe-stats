@@ -57,10 +57,33 @@ class GitHubClient:
     ) -> httpx.Response:
         async with self._semaphore:
             await self._rate_limit.wait_if_needed()
-            response = await self._client.get(url, params=params)
-            self._rate_limit.update(response)
-            response.raise_for_status()
-            return response
+            max_retries = 3
+            last_exc: Exception | None = None
+            for attempt in range(max_retries):
+                try:
+                    response = await self._client.get(url, params=params)
+                    self._rate_limit.update(response)
+                    response.raise_for_status()
+                    return response
+                except (
+                    httpx.TransportError,
+                    httpx.ConnectError,
+                    httpx.ConnectTimeout,
+                ) as exc:
+                    last_exc = exc
+                    if attempt < max_retries - 1:
+                        delay = 1 * (attempt + 1)
+                        logger.warning(
+                            "SSL/Connection error on %s (attempt %d/%d), retry in %ds: %s",
+                            url,
+                            attempt + 1,
+                            max_retries,
+                            delay,
+                            exc,
+                        )
+                        await asyncio.sleep(delay)
+                        continue
+            raise last_exc or httpx.ConnectError("Max retries exceeded")
 
     async def _cached_get_json(
         self, url: str, params: dict[str, Any] | None = None
