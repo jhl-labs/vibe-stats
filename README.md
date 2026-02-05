@@ -12,6 +12,8 @@ Git clone 없이 GitHub REST API만으로 커밋 수, 코드 변경량(additions
 - **레포지토리 통계 수집** — Org 전체 레포의 커밋 수, CLOC, 언어 분포를 집계
 - **기여자 랭킹** — 커밋 수·additions·deletions 기준 기여자 순위
 - **기간 필터링** — `--since` / `--until`로 특정 기간만 조회
+- **GitHub Enterprise Server 지원** — `--api-url`로 GHES 환경 대응
+- **SSL 검증 필수 사항 업체** — `--no-ssl-verify`로 사설 인증서 환경 대응
 - **다양한 출력 포맷** — 터미널 테이블, JSON, CSV 지원
 - **비동기 병렬 처리** — asyncio + httpx로 대규모 Org도 처리
 - **파일 캐싱** — API 응답을 디스크에 캐시하여 반복 조회 최적화
@@ -51,6 +53,12 @@ vibe-stats my-org --since 2024-01-01 --until 2024-12-31
 
 # JSON 출력
 vibe-stats my-org --format json > report.json
+
+# GitHub Enterprise Server
+vibe-stats my-org --api-url https://github.enterprise.com/api/v3
+
+# 사설 인증서 환경 (SSL 검증 비활성화)
+vibe-stats my-org --api-url https://github.enterprise.com/api/v3 --no-ssl-verify
 ```
 
 ## 사용법
@@ -62,6 +70,8 @@ vibe-stats <org> [OPTIONS]
 | 옵션 | 기본값 | 설명 |
 |------|--------|------|
 | `--token TEXT` | `$GITHUB_TOKEN` | GitHub API 토큰 |
+| `--api-url TEXT` | - | GitHub API base URL (예: `https://your-github-enterprise.com/api/v3`) |
+| `--no-ssl-verify` | 꺼짐 | SSL 인증서 검증 비활성화 (사설 인증서용) |
 | `--top-n INTEGER` | `10` | 상위 기여자 표시 수 |
 | `--since TEXT` | - | 시작 날짜 (YYYY-MM-DD 또는 7d, 2w, 3m, 1y) |
 | `--until TEXT` | - | 종료 날짜 (YYYY-MM-DD 또는 7d, 2w, 3m, 1y) |

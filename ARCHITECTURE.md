@@ -31,6 +31,8 @@
 | NFR-4 | 캐싱 | ✅ | 파일 기반 TTL 캐싱 (1시간, `~/.cache/vibe-stats/`) |
 | NFR-5 | 에러 복구 | ✅ | 개별 레포 실패 시 graceful degradation, 202 응답 재시도 |
 | NFR-6 | 보안 | ✅ | GitHub 토큰 등 민감 정보가 로그나 출력에 노출되지 않는다 |
+| NFR-7 | GHES 지원 | ✅ | GitHub Enterprise Server API URL 설정 가능 |
+| NFR-8 | SSL 검증 옵션 | ✅ | 사설 인증서 환경에서 SSL 검증 비활성화 가능 |
 
 ---
 
@@ -167,6 +169,8 @@ vibe-stats <org> [OPTIONS]
 |-----------|------|------|--------|------|
 | `org` | string | Y | - | GitHub Organization 이름 |
 | `--token` | string | N | `$GITHUB_TOKEN` | GitHub API 토큰 |
+| `--api-url` | string | N | - | GitHub API base URL (GHES 환경) |
+| `--no-ssl-verify` | flag | N | 꺼짐 | SSL 인증서 검증 비활성화 |
 | `--since` | string | N | - | 집계 시작 날짜 (YYYY-MM-DD) |
 | `--until` | string | N | - | 집계 종료 날짜 (YYYY-MM-DD) |
 | `--format` | choice | N | `table` | 출력 형식: `table`, `json`, `csv` |
@@ -265,3 +269,5 @@ vibe-stats/
 | 5 | Fork 레포 | Fork된 레포 포함 시 통계 왜곡 가능 | `--include-forks` 옵션으로 제어 (기본: 제외) |
 | 6 | 대규모 Org | 수백 개 레포 보유 Org의 경우 처리 시간 증가 | 비동기 병렬 처리, Rich 프로그레스 바 표시 |
 | 7 | API 변경 | GitHub API 스펙 변경 시 호환성 문제 | API 버전 헤더 `2022-11-28` 명시 |
+| 8 | GHES 버전 차이 | GitHub Enterprise Server 버전에 따른 API 차이 | `--api-url` 옵션으로 커스텀 엔드포인트 지정 |
+| 9 | 사설 인증서 | 엔터프라이즈 환경에서 자체 서명 인증서 사용 | `--no-ssl-verify` 옵션으로 SSL 검증 비활성화 |
