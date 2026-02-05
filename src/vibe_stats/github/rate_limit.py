@@ -32,4 +32,5 @@ class RateLimitMonitor:
         ):
             wait_seconds = max(0, self._reset_at - time.time()) + 1
             if wait_seconds > 0:
+                wait_seconds = min(wait_seconds, 3600)
                 await asyncio.sleep(wait_seconds)

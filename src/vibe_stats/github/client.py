@@ -69,12 +69,14 @@ class GitHubClient:
                     httpx.TransportError,
                     httpx.ConnectError,
                     httpx.ConnectTimeout,
+                    httpx.ReadTimeout,
+                    httpx.WriteTimeout,
                 ) as exc:
                     last_exc = exc
                     if attempt < max_retries - 1:
                         delay = 1 * (attempt + 1)
                         logger.warning(
-                            "SSL/Connection error on %s (attempt %d/%d), retry in %ds: %s",
+                            "SSL/Connection/Timeout error on %s (attempt %d/%d), retry in %ds: %s",
                             url,
                             attempt + 1,
                             max_retries,
