@@ -172,6 +172,8 @@ def main(
             exclude_bots=exclude_bots,
             min_commits=min_commits,
             output_file=output_file,
+            api_url=api_url,
+            verify_ssl=not no_ssl_verify,
         )
     )
 

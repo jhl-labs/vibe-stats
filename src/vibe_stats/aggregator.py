@@ -14,21 +14,23 @@ from .models import ContributorStats, LanguageStats, OrgReport, RepoStats
 
 logger = logging.getLogger(__name__)
 
-KNOWN_BOTS = frozenset({
-    "dependabot",
-    "renovate",
-    "github-actions",
-    "codecov",
-    "snyk-bot",
-    "greenkeeper",
-    "dependabot-preview",
-    "renovate-bot",
-    "allcontributors",
-    "imgbot",
-    "stale",
-    "mergify",
-    "sonarcloud",
-})
+KNOWN_BOTS = frozenset(
+    {
+        "dependabot",
+        "renovate",
+        "github-actions",
+        "codecov",
+        "snyk-bot",
+        "greenkeeper",
+        "dependabot-preview",
+        "renovate-bot",
+        "allcontributors",
+        "imgbot",
+        "stale",
+        "mergify",
+        "sonarcloud",
+    }
+)
 
 
 def _is_bot(username: str) -> bool:
@@ -63,17 +65,43 @@ async def _collect_repo_stats(
         client.list_commits(owner, repo_name, since=since, until=until)
     )
     languages_task = asyncio.create_task(client.get_languages(owner, repo_name))
-    contributors_task = asyncio.create_task(client.get_contributor_stats(owner, repo_name))
+    contributors_task = asyncio.create_task(
+        client.get_contributor_stats(owner, repo_name)
+    )
     prs_task = asyncio.create_task(
-        client.list_pull_requests(owner, repo_name, state="all", since=since, until=until)
+        client.list_pull_requests(
+            owner, repo_name, state="all", since=since, until=until
+        )
     )
     issues_task = asyncio.create_task(
         client.list_issues(owner, repo_name, state="open", since=since)
     )
 
-    commits, lang_bytes, raw_contributors, prs, issues = await asyncio.gather(
-        commits_task, languages_task, contributors_task, prs_task, issues_task
+    results = await asyncio.gather(
+        commits_task,
+        languages_task,
+        contributors_task,
+        prs_task,
+        issues_task,
+        return_exceptions=True,
     )
+    commits, lang_bytes, raw_contributors, prs, issues = results
+
+    if isinstance(commits, Exception):
+        logger.warning("Error fetching commits: %s", commits)
+        commits = []
+    if isinstance(lang_bytes, Exception):
+        logger.warning("Error fetching languages: %s", lang_bytes)
+        lang_bytes = {}
+    if isinstance(raw_contributors, Exception):
+        logger.warning("Error fetching contributors: %s", raw_contributors)
+        raw_contributors = []
+    if isinstance(prs, Exception):
+        logger.warning("Error fetching PRs: %s", prs)
+        prs = []
+    if isinstance(issues, Exception):
+        logger.warning("Error fetching issues: %s", issues)
+        issues = []
 
     # Commits
     total_commits = len(commits) if isinstance(commits, list) else 0
@@ -96,11 +124,13 @@ async def _collect_repo_stats(
     if isinstance(lang_bytes, dict) and lang_bytes:
         total_bytes = sum(lang_bytes.values())
         for lang, b in sorted(lang_bytes.items(), key=lambda x: x[1], reverse=True):
-            languages.append(LanguageStats(
-                language=lang,
-                bytes=b,
-                percentage=round(b / total_bytes * 100, 1) if total_bytes else 0,
-            ))
+            languages.append(
+                LanguageStats(
+                    language=lang,
+                    bytes=b,
+                    percentage=round(b / total_bytes * 100, 1) if total_bytes else 0,
+                )
+            )
 
     # Contributors — filter weeks by since/until when provided
     since_ts: float | None = None
@@ -134,12 +164,14 @@ async def _collect_repo_stats(
                 continue
             total_additions += additions
             total_deletions += deletions
-            contributors.append(ContributorStats(
-                username=author.get("login", "unknown"),
-                commits=commits_count,
-                additions=additions,
-                deletions=deletions,
-            ))
+            contributors.append(
+                ContributorStats(
+                    username=author.get("login", "unknown"),
+                    commits=commits_count,
+                    additions=additions,
+                    deletions=deletions,
+                )
+            )
         contributors.sort(key=lambda x: x.commits, reverse=True)
 
     return RepoStats(
@@ -187,7 +219,9 @@ async def aggregate_org_report(
         TextColumn("[progress.description]{task.description}"),
         transient=True,
     ) as progress:
-        task = progress.add_task(f"Collecting stats for {len(repos)} repos...", total=len(repos))
+        task = progress.add_task(
+            f"Collecting stats for {len(repos)} repos...", total=len(repos)
+        )
 
         async def collect_and_update(repo: dict) -> RepoStats | None:
             name = repo["name"]
@@ -203,9 +237,7 @@ async def aggregate_org_report(
             finally:
                 progress.advance(task)
 
-        results = await asyncio.gather(
-            *(collect_and_update(r) for r in repos)
-        )
+        results = await asyncio.gather(*(collect_and_update(r) for r in repos))
         repo_stats_list = [r for r in results if r is not None]
 
     # Aggregate org-level stats
