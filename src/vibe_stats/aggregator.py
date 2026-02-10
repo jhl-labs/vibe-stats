@@ -318,21 +318,31 @@ async def _collect_repo_stats(
             msg = m.group(1) if m else msg
         logger.warning("%s/%s %s: %s", owner, repo_name, api_name, msg)
 
+    failures: list[Exception] = []
     if isinstance(commits, Exception):
         _warn("commits", commits)
+        failures.append(commits)
         commits = []
     if isinstance(lang_bytes, Exception):
         _warn("languages", lang_bytes)
+        failures.append(lang_bytes)
         lang_bytes = {}
     if isinstance(raw_contributors, Exception):
         _warn("contributors", raw_contributors)
+        failures.append(raw_contributors)
         raw_contributors = []
     if isinstance(prs, Exception):
         _warn("pulls", prs)
+        failures.append(prs)
         prs = []
     if isinstance(issues, Exception):
         _warn("issues", issues)
+        failures.append(issues)
         issues = []
+
+    # If ALL API calls failed, re-raise the first exception
+    if len(failures) == 5:
+        raise failures[0]
 
     # Commits
     total_commits = len(commits) if isinstance(commits, list) else 0
@@ -503,6 +513,13 @@ async def aggregate_org_report(
 
         results = await asyncio.gather(*(collect_and_update(r) for r in repos))
         repo_stats_list = [r for r in results if r is not None]
+
+    # If no repos succeeded at all, raise the error so CLI can show a proper message
+    if not repo_stats_list and failed_repos:
+        raise RuntimeError(
+            f"Failed to collect stats for all {len(failed_repos)} repo(s): "
+            + ", ".join(failed_repos)
+        )
 
     # Aggregate org-level stats
     total_commits = sum(r.total_commits for r in repo_stats_list)
