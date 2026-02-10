@@ -6,7 +6,15 @@ import json
 import os
 import tempfile
 
-from vibe_stats.models import ContributorStats, LanguageStats, OrgReport, RepoStats
+from vibe_stats.models import (
+    CommitPatternStats,
+    ContributorStats,
+    IssueInsights,
+    LanguageStats,
+    OrgReport,
+    PRInsights,
+    RepoStats,
+)
 from vibe_stats.renderer import render_csv, render_json, render_report
 
 
@@ -29,6 +37,9 @@ def _make_report(**kwargs) -> OrgReport:
         ],
         repos=[],
         failed_repos=[],
+        total_stars=42,
+        total_forks=10,
+        archived_repos=0,
     )
     defaults.update(kwargs)
     return OrgReport(**defaults)
@@ -97,11 +108,13 @@ def test_render_report_repo_summary_multi_repos(capsys):
         RepoStats(
             name="repo1", full_name="org/repo1",
             total_commits=5, total_additions=50, total_deletions=20,
+            stars=10, forks=3,
             languages=[LanguageStats(language="Python", bytes=500, percentage=100.0)],
         ),
         RepoStats(
             name="repo2", full_name="org/repo2",
             total_commits=3, total_additions=30, total_deletions=10,
+            stars=5, forks=1,
             languages=[LanguageStats(language="Go", bytes=300, percentage=100.0)],
         ),
     ]
@@ -111,6 +124,8 @@ def test_render_report_repo_summary_multi_repos(capsys):
     assert "Repository Summary" in captured.out
     assert "repo1" in captured.out
     assert "repo2" in captured.out
+    assert "Stars" in captured.out
+    assert "Forks" in captured.out
 
 
 def test_render_report_no_repo_summary_single_repo(capsys):
@@ -189,3 +204,106 @@ def test_render_report_sort_by_lines(capsys):
     assert "Lines" in captured.out
     # alice: 70+30=100
     assert "100" in captured.out
+
+
+# --- New section tests ---
+
+
+def test_render_report_shows_stars_forks(capsys):
+    """render_report should show total stars and forks in summary."""
+    report = _make_report(total_stars=42, total_forks=10)
+    render_report(report, top_n=5)
+    captured = capsys.readouterr()
+    assert "Total Stars" in captured.out
+    assert "42" in captured.out
+    assert "Total Forks" in captured.out
+    assert "10" in captured.out
+
+
+def test_render_report_shows_archived_repos(capsys):
+    """render_report should show archived repos count when > 0."""
+    report = _make_report(archived_repos=3)
+    render_report(report, top_n=5)
+    captured = capsys.readouterr()
+    assert "Archived Repos" in captured.out
+    assert "3" in captured.out
+
+
+def test_render_report_hides_archived_when_zero(capsys):
+    """render_report should NOT show archived repos when 0."""
+    report = _make_report(archived_repos=0)
+    render_report(report, top_n=5)
+    captured = capsys.readouterr()
+    assert "Archived Repos" not in captured.out
+
+
+def test_render_report_commit_patterns(capsys):
+    """render_report should show commit patterns section."""
+    cp = CommitPatternStats(
+        feat=5, fix=3, refactor=2, docs=1, test=1, chore=1, style=0, ci=0, other=2,
+        total=15,
+        weekday_distribution={0: 5, 1: 3, 2: 4, 3: 2, 4: 1},
+    )
+    report = _make_report(commit_patterns=cp)
+    render_report(report, top_n=5)
+    captured = capsys.readouterr()
+    assert "Commit Patterns" in captured.out
+    assert "feat" in captured.out
+    assert "fix" in captured.out
+    assert "Commits by Day of Week" in captured.out
+    assert "Mon" in captured.out
+
+
+def test_render_report_pr_insights(capsys):
+    """render_report should show PR insights section."""
+    pri = PRInsights(
+        total_analyzed=20,
+        avg_merge_hours=24.5,
+        median_merge_hours=18.0,
+        draft_count=3,
+        top_authors=[("alice", 10), ("bob", 7)],
+    )
+    report = _make_report(pr_insights=pri)
+    render_report(report, top_n=5)
+    captured = capsys.readouterr()
+    assert "PR Insights" in captured.out
+    assert "Avg Merge Time" in captured.out
+    assert "Median Merge Time" in captured.out
+    assert "Top PR Authors" in captured.out
+    assert "alice" in captured.out
+
+
+def test_render_report_issue_insights(capsys):
+    """render_report should show issue insights section."""
+    ii = IssueInsights(
+        total_analyzed=10,
+        label_distribution={"bug": 5, "enhancement": 3, "question": 2},
+        top_reporters=[("alice", 4), ("bob", 3)],
+    )
+    report = _make_report(issue_insights=ii)
+    render_report(report, top_n=5)
+    captured = capsys.readouterr()
+    assert "Issue Insights" in captured.out
+    assert "bug" in captured.out
+    assert "Top Issue Reporters" in captured.out
+    assert "alice" in captured.out
+
+
+def test_render_json_includes_new_fields(capsys):
+    """render_json should include new insight fields."""
+    cp = CommitPatternStats(feat=5, fix=3, total=8)
+    pri = PRInsights(total_analyzed=10, avg_merge_hours=24.0)
+    ii = IssueInsights(total_analyzed=5, label_distribution={"bug": 3})
+    report = _make_report(
+        total_stars=42, total_forks=10, archived_repos=1,
+        commit_patterns=cp, pr_insights=pri, issue_insights=ii,
+    )
+    render_json(report)
+    captured = capsys.readouterr()
+    data = json.loads(captured.out)
+    assert data["total_stars"] == 42
+    assert data["total_forks"] == 10
+    assert data["archived_repos"] == 1
+    assert data["commit_patterns"]["feat"] == 5
+    assert data["pr_insights"]["total_analyzed"] == 10
+    assert data["issue_insights"]["label_distribution"]["bug"] == 3

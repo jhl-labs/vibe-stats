@@ -21,14 +21,33 @@ _SORT_LABELS = {
     "lines": "Lines",
 }
 
+_WEEKDAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
 
 def _format_number(n: int) -> str:
     return f"{n:,}"
 
 
+def _format_hours(h: float | None) -> str:
+    if h is None:
+        return "-"
+    if h < 1:
+        return f"{h * 60:.0f}m"
+    if h < 24:
+        return f"{h:.1f}h"
+    return f"{h / 24:.1f}d"
+
+
 def _make_bar(percentage: float, width: int = 20) -> str:
     filled = round(percentage / 100 * width)
     return "\u2588" * filled + "\u2591" * (width - filled)
+
+
+def _make_inline_bar(count: int, max_count: int, width: int = 15) -> str:
+    if max_count == 0:
+        return ""
+    filled = round(count / max_count * width)
+    return "\u2588" * filled
 
 
 def _write_to_file(content: str, output_file: str) -> None:
@@ -72,7 +91,7 @@ def render_report(
         )
         console.print()
 
-    # Summary
+    # Summary (extended with stars/forks/archived)
     console.print("[bold]Summary[/bold]")
     summary = Table(show_header=False, box=None, padding=(0, 2))
     summary.add_column("label", style="dim")
@@ -84,6 +103,10 @@ def render_report(
     summary.add_row("Open PRs", _format_number(report.total_open_prs))
     summary.add_row("Merged PRs", _format_number(report.total_merged_prs))
     summary.add_row("Open Issues", _format_number(report.total_open_issues))
+    summary.add_row("Total Stars", _format_number(report.total_stars))
+    summary.add_row("Total Forks", _format_number(report.total_forks))
+    if report.archived_repos > 0:
+        summary.add_row("Archived Repos", _format_number(report.archived_repos))
     console.print(summary)
     console.print()
 
@@ -95,6 +118,8 @@ def render_report(
         repo_table.add_column("Commits", justify="right")
         repo_table.add_column("Additions", justify="right")
         repo_table.add_column("Deletions", justify="right")
+        repo_table.add_column("Stars", justify="right")
+        repo_table.add_column("Forks", justify="right")
         repo_table.add_column("Top Language")
         repo_table.add_column("Contributors", justify="right")
 
@@ -106,6 +131,8 @@ def render_report(
                 _format_number(r.total_commits),
                 _format_number(r.total_additions),
                 _format_number(r.total_deletions),
+                _format_number(r.stars),
+                _format_number(r.forks),
                 top_lang,
                 str(len(r.contributors)),
             )
@@ -129,6 +156,99 @@ def render_report(
                 _format_number(lang.bytes),
             )
         console.print(lang_table)
+        console.print()
+
+    # Commit Patterns section
+    cp = report.commit_patterns
+    if cp and cp.total > 0:
+        console.print("[bold]Commit Patterns[/bold]")
+        cp_table = Table(show_header=True, header_style="bold")
+        cp_table.add_column("Type")
+        cp_table.add_column("Count", justify="right")
+        cp_table.add_column("Percentage", justify="right")
+
+        type_counts = [
+            ("feat", cp.feat), ("fix", cp.fix), ("refactor", cp.refactor),
+            ("docs", cp.docs), ("test", cp.test), ("chore", cp.chore),
+            ("style", cp.style), ("ci", cp.ci), ("other", cp.other),
+        ]
+        for name, count in type_counts:
+            if count > 0:
+                pct = round(count / cp.total * 100, 1)
+                cp_table.add_row(name, _format_number(count), f"{pct}%")
+        console.print(cp_table)
+
+        # Weekday distribution
+        if cp.weekday_distribution:
+            console.print()
+            console.print("[bold]Commits by Day of Week[/bold]")
+            wd_table = Table(show_header=True, header_style="bold")
+            wd_table.add_column("Day")
+            wd_table.add_column("Commits", justify="right")
+            wd_table.add_column("Bar")
+            max_wd = max(cp.weekday_distribution.values()) if cp.weekday_distribution else 1
+            for i in range(7):
+                cnt = cp.weekday_distribution.get(i, 0)
+                wd_table.add_row(
+                    _WEEKDAY_NAMES[i],
+                    _format_number(cnt),
+                    _make_inline_bar(cnt, max_wd),
+                )
+            console.print(wd_table)
+        console.print()
+
+    # PR Insights section
+    pri = report.pr_insights
+    if pri and pri.total_analyzed > 0:
+        console.print("[bold]PR Insights[/bold]")
+        pri_table = Table(show_header=False, box=None, padding=(0, 2))
+        pri_table.add_column("label", style="dim")
+        pri_table.add_column("value", style="bold")
+        pri_table.add_row("Total PRs Analyzed", _format_number(pri.total_analyzed))
+        pri_table.add_row("Avg Merge Time", _format_hours(pri.avg_merge_hours))
+        pri_table.add_row("Median Merge Time", _format_hours(pri.median_merge_hours))
+        if pri.avg_close_hours is not None:
+            pri_table.add_row("Avg Close Time (unmerged)", _format_hours(pri.avg_close_hours))
+        if pri.draft_count > 0:
+            pri_table.add_row("Draft PRs", _format_number(pri.draft_count))
+        console.print(pri_table)
+
+        if pri.top_authors:
+            console.print()
+            console.print("[bold]Top PR Authors[/bold]")
+            author_table = Table(show_header=True, header_style="bold")
+            author_table.add_column("#", justify="right")
+            author_table.add_column("Author")
+            author_table.add_column("PRs", justify="right")
+            for i, (author, count) in enumerate(pri.top_authors[:top_n], 1):
+                author_table.add_row(str(i), author, _format_number(count))
+            console.print(author_table)
+        console.print()
+
+    # Issue Insights section
+    ii = report.issue_insights
+    if ii and ii.total_analyzed > 0:
+        console.print("[bold]Issue Insights[/bold]")
+
+        if ii.label_distribution:
+            label_table = Table(show_header=True, header_style="bold")
+            label_table.add_column("Label")
+            label_table.add_column("Count", justify="right")
+            sorted_labels = sorted(ii.label_distribution.items(), key=lambda x: x[1], reverse=True)
+            for name, count in sorted_labels[:15]:
+                label_table.add_row(name, _format_number(count))
+            console.print(label_table)
+
+        if ii.top_reporters:
+            console.print()
+            console.print("[bold]Top Issue Reporters[/bold]")
+            reporter_table = Table(show_header=True, header_style="bold")
+            reporter_table.add_column("#", justify="right")
+            reporter_table.add_column("Reporter")
+            reporter_table.add_column("Issues", justify="right")
+            for i, (reporter, count) in enumerate(ii.top_reporters[:top_n], 1):
+                reporter_table.add_row(str(i), reporter, _format_number(count))
+            console.print(reporter_table)
         console.print()
 
     # Top contributors
