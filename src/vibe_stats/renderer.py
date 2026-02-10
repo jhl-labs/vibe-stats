@@ -38,6 +38,11 @@ def _format_hours(h: float | None) -> str:
     return f"{h / 24:.1f}d"
 
 
+def _format_date(iso: str) -> str:
+    """Format an ISO 8601 date string to YYYY-MM-DD for display."""
+    return iso[:10] if len(iso) >= 10 else iso
+
+
 def _make_bar(percentage: float, width: int = 20) -> str:
     filled = round(percentage / 100 * width)
     return "\u2588" * filled + "\u2591" * (width - filled)
@@ -73,8 +78,8 @@ def render_report(
     # Header panel
     period = ""
     if report.period_start or report.period_end:
-        start = report.period_start or "..."
-        end = report.period_end or "..."
+        start = _format_date(report.period_start) if report.period_start else "..."
+        end = _format_date(report.period_end) if report.period_end else "..."
         period = f"\nPeriod: {start} ~ {end}"
 
     console.print(Panel(

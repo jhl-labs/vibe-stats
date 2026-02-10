@@ -46,7 +46,8 @@ def _resolve_date(value: str | None) -> str | None:
     "--token",
     envvar="GITHUB_TOKEN",
     required=True,
-    help="GitHub API token (default: $GITHUB_TOKEN)",
+    show_envvar=True,
+    help="GitHub personal access token",
 )
 @click.option(
     "--top-n", default=10, show_default=True, help="Number of top contributors to show"
@@ -54,12 +55,12 @@ def _resolve_date(value: str | None) -> str | None:
 @click.option(
     "--since",
     default=None,
-    help="Start date filter (YYYY-MM-DD or relative: 7d, 2w, 3m, 1y)",
+    help="Start date (YYYY-MM-DD or relative: 7d, 2w, 3m, 1y)",
 )
 @click.option(
     "--until",
     default=None,
-    help="End date filter (YYYY-MM-DD or relative: 7d, 2w, 3m, 1y)",
+    help="End date (YYYY-MM-DD or relative: 7d, 2w, 3m, 1y)",
 )
 @click.option(
     "--include-forks", is_flag=True, default=False, help="Include forked repositories"
@@ -70,13 +71,13 @@ def _resolve_date(value: str | None) -> str | None:
     type=click.Choice(["table", "json", "csv"], case_sensitive=False),
     default="table",
     show_default=True,
-    help="Output format",
+    help="Output format (csv exports contributor data only)",
 )
-@click.option("--no-cache", is_flag=True, default=False, help="Disable caching")
+@click.option("--no-cache", is_flag=True, default=False, help="Disable HTTP response caching")
 @click.option(
     "--exclude-repo",
     multiple=True,
-    help="Exclude specific repositories (can be specified multiple times)",
+    help="Exclude repo by name (repeatable)",
 )
 @click.option(
     "--sort-by",
@@ -91,12 +92,11 @@ def _resolve_date(value: str | None) -> str | None:
     "--exclude-bots",
     is_flag=True,
     default=False,
-    help="Exclude bot accounts from contributors",
+    help="Exclude bot accounts (e.g. dependabot)",
 )
 @click.option(
     "--min-commits",
     default=0,
-    show_default=True,
     help="Minimum commits to include a contributor",
 )
 @click.option(
@@ -104,18 +104,18 @@ def _resolve_date(value: str | None) -> str | None:
     "output_file",
     default=None,
     type=click.Path(),
-    help="Save output to file",
+    help="Save output to file instead of stdout",
 )
 @click.option(
     "--api-url",
     default=None,
-    help="GitHub API base URL (e.g., https://your-github-enterprise.com/api/v3)",
+    help="GitHub Enterprise API base URL",
 )
 @click.option(
     "--no-ssl-verify",
     is_flag=True,
     default=False,
-    help="Disable SSL certificate verification (for self-signed certificates)",
+    help="Disable SSL verification (self-signed certs)",
 )
 @click.version_option(version=__version__)
 def main(
@@ -137,7 +137,17 @@ def main(
 ) -> None:
     """Collect and display GitHub contribution statistics.
 
-    TARGET can be an org/user name (e.g. "myorg") or a specific repo (e.g. "myorg/myrepo").
+    \b
+    TARGET can be:
+      - An org or user name:  vibe-stats myorg
+      - A specific repo:      vibe-stats myorg/myrepo
+
+    \b
+    Examples:
+      vibe-stats myorg --since 30d
+      vibe-stats myorg/myrepo --format json --output report.json
+      vibe-stats myorg --since 2024-01-01 --until 2024-12-31
+      vibe-stats myorg --exclude-bots --min-commits 5 --sort-by additions
     """
     # Parse target: org or org/repo
     if "/" in target:
