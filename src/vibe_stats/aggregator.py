@@ -308,20 +308,30 @@ async def _collect_repo_stats(
     )
     commits, lang_bytes, raw_contributors, prs, issues = results
 
+    def _warn(api_name: str, exc: Exception) -> None:
+        # Extract just the status code + reason, not the full URL
+        msg = str(exc)
+        if "HTTPStatusError" in type(exc).__name__ or "HTTP" in type(exc).__name__:
+            # e.g. "Client error '404 Not Found' for url ..." -> "404 Not Found"
+            import re as _re
+            m = _re.search(r"'(\d+ [^']+)'", msg)
+            msg = m.group(1) if m else msg
+        logger.warning("%s/%s %s: %s", owner, repo_name, api_name, msg)
+
     if isinstance(commits, Exception):
-        logger.warning("Error fetching commits: %s", commits)
+        _warn("commits", commits)
         commits = []
     if isinstance(lang_bytes, Exception):
-        logger.warning("Error fetching languages: %s", lang_bytes)
+        _warn("languages", lang_bytes)
         lang_bytes = {}
     if isinstance(raw_contributors, Exception):
-        logger.warning("Error fetching contributors: %s", raw_contributors)
+        _warn("contributors", raw_contributors)
         raw_contributors = []
     if isinstance(prs, Exception):
-        logger.warning("Error fetching PRs: %s", prs)
+        _warn("pulls", prs)
         prs = []
     if isinstance(issues, Exception):
-        logger.warning("Error fetching issues: %s", issues)
+        _warn("issues", issues)
         issues = []
 
     # Commits
@@ -672,6 +682,13 @@ async def aggregate_org_report(
                     active_weeks=t.active_weeks,
                     total_weeks=t.total_weeks,
                 )
+    # Apply same filters as contributors
+    filtered_usernames: set[str] | None = None
+    if exclude_bots or min_commits > 0:
+        filtered_usernames = {c.username for c in org_contributors}
+    if filtered_usernames is not None:
+        org_trend_map = {k: v for k, v in org_trend_map.items() if k in filtered_usernames}
+
     org_contributor_trends = sorted(
         org_trend_map.values(), key=lambda t: t.active_weeks, reverse=True
     )

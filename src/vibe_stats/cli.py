@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+import sys
 from datetime import datetime, timedelta
 
 import click
@@ -166,26 +167,36 @@ def main(
 
     from .orchestrator import run
 
-    asyncio.run(
-        run(
-            org=org,
-            token=token,
-            top_n=top_n,
-            since=iso_since,
-            until=iso_until,
-            include_forks=include_forks,
-            output_format=output_format,
-            no_cache=no_cache,
-            repo=repo,
-            exclude_repos=list(exclude_repo),
-            sort_by=sort_by,
-            exclude_bots=exclude_bots,
-            min_commits=min_commits,
-            output_file=output_file,
-            api_url=api_url,
-            verify_ssl=not no_ssl_verify,
+    try:
+        asyncio.run(
+            run(
+                org=org,
+                token=token,
+                top_n=top_n,
+                since=iso_since,
+                until=iso_until,
+                include_forks=include_forks,
+                output_format=output_format,
+                no_cache=no_cache,
+                repo=repo,
+                exclude_repos=list(exclude_repo),
+                sort_by=sort_by,
+                exclude_bots=exclude_bots,
+                min_commits=min_commits,
+                output_file=output_file,
+                api_url=api_url,
+                verify_ssl=not no_ssl_verify,
+            )
         )
-    )
+    except Exception as exc:
+        msg = str(exc)
+        if "404" in msg:
+            click.echo(f"Error: '{target}' not found. Check the org/repo name.", err=True)
+        elif "401" in msg or "403" in msg:
+            click.echo("Error: Authentication failed. Check your --token or $GITHUB_TOKEN.", err=True)
+        else:
+            click.echo(f"Error: {msg}", err=True)
+        sys.exit(1)
 
 
 if __name__ == "__main__":  # pragma: no cover
