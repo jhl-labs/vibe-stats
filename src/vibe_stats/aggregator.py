@@ -585,25 +585,16 @@ async def aggregate_org_report(
     org_pr_insights: PRInsights | None = None
     all_pr = [r.pr_insights for r in repo_stats_list if r.pr_insights]
     if all_pr:
-        all_merge_hours: list[float] = []
-        all_close_hours: list[float] = []
         total_draft = 0
         author_totals: dict[str, int] = {}
         total_pr_analyzed = 0
+        merge_weighted: list[tuple[float, int]] = []
+        close_weighted: list[tuple[float, int]] = []
         for pi in all_pr:
             total_pr_analyzed += pi.total_analyzed
             total_draft += pi.draft_count
             for author, cnt in pi.top_authors:
                 author_totals[author] = author_totals.get(author, 0) + cnt
-            # Re-derive merge/close hours from per-repo averages is lossy;
-            # use avg * count as approximation
-            if pi.avg_merge_hours is not None and pi.total_analyzed > 0:
-                merged_count = sum(1 for _ in [1])  # placeholder
-            # For simplicity, aggregate avg across repos weighted by count
-        # Weighted average calculation
-        merge_weighted = []
-        close_weighted = []
-        for pi in all_pr:
             if pi.avg_merge_hours is not None:
                 merge_weighted.append((pi.avg_merge_hours, pi.total_analyzed))
             if pi.avg_close_hours is not None:
