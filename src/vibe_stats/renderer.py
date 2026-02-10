@@ -103,8 +103,10 @@ def render_report(
     summary.add_row("Open PRs", _format_number(report.total_open_prs))
     summary.add_row("Merged PRs", _format_number(report.total_merged_prs))
     summary.add_row("Open Issues", _format_number(report.total_open_issues))
-    summary.add_row("Total Stars", _format_number(report.total_stars))
-    summary.add_row("Total Forks", _format_number(report.total_forks))
+    if report.total_stars > 0:
+        summary.add_row("Total Stars", _format_number(report.total_stars))
+    if report.total_forks > 0:
+        summary.add_row("Total Forks", _format_number(report.total_forks))
     if report.archived_repos > 0:
         summary.add_row("Archived Repos", _format_number(report.archived_repos))
     console.print(summary)
@@ -112,30 +114,38 @@ def render_report(
 
     # Repository summary table (only when multiple repos)
     if len(report.repos) > 1:
+        has_stars = any(r.stars > 0 for r in report.repos)
+        has_forks = any(r.forks > 0 for r in report.repos)
+
         console.print("[bold]Repository Summary[/bold]")
         repo_table = Table(show_header=True, header_style="bold")
-        repo_table.add_column("Repo")
-        repo_table.add_column("Commits", justify="right")
-        repo_table.add_column("Additions", justify="right")
-        repo_table.add_column("Deletions", justify="right")
-        repo_table.add_column("Stars", justify="right")
-        repo_table.add_column("Forks", justify="right")
-        repo_table.add_column("Top Language")
-        repo_table.add_column("Contributors", justify="right")
+        repo_table.add_column("Repo", no_wrap=True)
+        repo_table.add_column("Commits", justify="right", no_wrap=True)
+        repo_table.add_column("+/-", justify="right", no_wrap=True)
+        if has_stars:
+            repo_table.add_column("Stars", justify="right", no_wrap=True)
+        if has_forks:
+            repo_table.add_column("Forks", justify="right", no_wrap=True)
+        repo_table.add_column("Language", no_wrap=True)
+        repo_table.add_column("Contribs", justify="right", no_wrap=True)
 
         sorted_repos = sorted(report.repos, key=lambda r: r.total_commits, reverse=True)
         for r in sorted_repos:
             top_lang = r.languages[0].language if r.languages else "-"
-            repo_table.add_row(
-                r.name,
+            name = f"[dim]A[/dim] {r.name}" if r.is_archived else r.name
+            changes = f"+{_format_number(r.total_additions)} / -{_format_number(r.total_deletions)}"
+            row: list[str] = [
+                name,
                 _format_number(r.total_commits),
-                _format_number(r.total_additions),
-                _format_number(r.total_deletions),
-                _format_number(r.stars),
-                _format_number(r.forks),
-                top_lang,
-                str(len(r.contributors)),
-            )
+                changes,
+            ]
+            if has_stars:
+                row.append(_format_number(r.stars))
+            if has_forks:
+                row.append(_format_number(r.forks))
+            row.append(top_lang)
+            row.append(str(len(r.contributors)))
+            repo_table.add_row(*row)
         console.print(repo_table)
         console.print()
 
@@ -195,6 +205,15 @@ def render_report(
                     _make_inline_bar(cnt, max_wd),
                 )
             console.print(wd_table)
+
+        # Peak hours (top 3 most active hours)
+        if cp.hourly_distribution:
+            sorted_hours = sorted(
+                cp.hourly_distribution.items(), key=lambda x: x[1], reverse=True
+            )[:3]
+            peak_str = ", ".join(f"{h:02d}:00 ({c})" for h, c in sorted_hours)
+            console.print(f"  [dim]Peak hours:[/dim] {peak_str}")
+
         console.print()
 
     # PR Insights section
@@ -220,7 +239,8 @@ def render_report(
             author_table.add_column("#", justify="right")
             author_table.add_column("Author")
             author_table.add_column("PRs", justify="right")
-            for i, (author, count) in enumerate(pri.top_authors[:top_n], 1):
+            sorted_authors = sorted(pri.top_authors, key=lambda x: x[1], reverse=True)
+            for i, (author, count) in enumerate(sorted_authors[:top_n], 1):
                 author_table.add_row(str(i), author, _format_number(count))
             console.print(author_table)
         console.print()
@@ -280,6 +300,36 @@ def render_report(
                 row.append(_format_number(c.additions + c.deletions))
             contrib_table.add_row(*row)
         console.print(contrib_table)
+        console.print()
+
+    # Contributor Activity Trends
+    if report.contributor_trends:
+        console.print(f"[bold]Contributor Activity (top {top_n})[/bold]")
+        trend_table = Table(show_header=True, header_style="bold")
+        trend_table.add_column("#", justify="right")
+        trend_table.add_column("Username")
+        trend_table.add_column("First Active", no_wrap=True)
+        trend_table.add_column("Last Active", no_wrap=True)
+        trend_table.add_column("Active Wks", justify="right")
+        trend_table.add_column("Span Wks", justify="right")
+        trend_table.add_column("Consistency", justify="right")
+
+        for i, t in enumerate(report.contributor_trends[:top_n], 1):
+            consistency = (
+                f"{t.active_weeks / t.total_weeks * 100:.0f}%"
+                if t.total_weeks > 0
+                else "-"
+            )
+            trend_table.add_row(
+                str(i),
+                t.username,
+                t.first_active_week,
+                t.last_active_week,
+                str(t.active_weeks),
+                str(t.total_weeks),
+                consistency,
+            )
+        console.print(trend_table)
         console.print()
 
     if output_file:

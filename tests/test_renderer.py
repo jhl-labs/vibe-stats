@@ -210,7 +210,7 @@ def test_render_report_sort_by_lines(capsys):
 
 
 def test_render_report_shows_stars_forks(capsys):
-    """render_report should show total stars and forks in summary."""
+    """render_report should show total stars and forks in summary when > 0."""
     report = _make_report(total_stars=42, total_forks=10)
     render_report(report, top_n=5)
     captured = capsys.readouterr()
@@ -218,6 +218,15 @@ def test_render_report_shows_stars_forks(capsys):
     assert "42" in captured.out
     assert "Total Forks" in captured.out
     assert "10" in captured.out
+
+
+def test_render_report_hides_stars_forks_when_zero(capsys):
+    """render_report should NOT show stars/forks in summary when 0."""
+    report = _make_report(total_stars=0, total_forks=0)
+    render_report(report, top_n=5)
+    captured = capsys.readouterr()
+    assert "Total Stars" not in captured.out
+    assert "Total Forks" not in captured.out
 
 
 def test_render_report_shows_archived_repos(capsys):
@@ -237,6 +246,72 @@ def test_render_report_hides_archived_when_zero(capsys):
     assert "Archived Repos" not in captured.out
 
 
+def test_render_report_repo_summary_conditional_stars_forks(capsys):
+    """Stars/Forks columns should only appear when repos have nonzero values."""
+    repos = [
+        RepoStats(
+            name="repo1", full_name="org/repo1",
+            total_commits=5, total_additions=50, total_deletions=20,
+            stars=0, forks=0,
+            languages=[LanguageStats(language="Python", bytes=500, percentage=100.0)],
+        ),
+        RepoStats(
+            name="repo2", full_name="org/repo2",
+            total_commits=3, total_additions=30, total_deletions=10,
+            stars=0, forks=0,
+            languages=[LanguageStats(language="Go", bytes=300, percentage=100.0)],
+        ),
+    ]
+    report = _make_report(repos=repos, total_repos=2, total_stars=0, total_forks=0)
+    render_report(report, top_n=5)
+    captured = capsys.readouterr()
+    assert "Repository Summary" in captured.out
+    # Stars/Forks columns should be hidden when all repos have 0
+    assert "Stars" not in captured.out
+    assert "Forks" not in captured.out
+
+
+def test_render_report_repo_summary_archived_marker(capsys):
+    """Archived repos should show [A] marker in repo summary."""
+    repos = [
+        RepoStats(
+            name="active-repo", full_name="org/active-repo",
+            total_commits=5, total_additions=50, total_deletions=20,
+            is_archived=False,
+        ),
+        RepoStats(
+            name="old-repo", full_name="org/old-repo",
+            total_commits=2, total_additions=10, total_deletions=5,
+            is_archived=True,
+        ),
+    ]
+    report = _make_report(repos=repos, total_repos=2, total_stars=0, total_forks=0)
+    render_report(report, top_n=5)
+    captured = capsys.readouterr()
+    assert "old-repo" in captured.out
+    assert "A" in captured.out  # archived marker
+
+
+def test_render_report_repo_summary_changes_column(capsys):
+    """Repo summary should show +/- column with additions and deletions."""
+    repos = [
+        RepoStats(
+            name="repo1", full_name="org/repo1",
+            total_commits=5, total_additions=50, total_deletions=20,
+        ),
+        RepoStats(
+            name="repo2", full_name="org/repo2",
+            total_commits=3, total_additions=30, total_deletions=10,
+        ),
+    ]
+    report = _make_report(repos=repos, total_repos=2, total_stars=0, total_forks=0)
+    render_report(report, top_n=5)
+    captured = capsys.readouterr()
+    assert "+/-" in captured.out
+    assert "+50" in captured.out
+    assert "-20" in captured.out
+
+
 def test_render_report_commit_patterns(capsys):
     """render_report should show commit patterns section."""
     cp = CommitPatternStats(
@@ -252,6 +327,19 @@ def test_render_report_commit_patterns(capsys):
     assert "fix" in captured.out
     assert "Commits by Day of Week" in captured.out
     assert "Mon" in captured.out
+
+
+def test_render_report_commit_patterns_peak_hours(capsys):
+    """render_report should show peak hours when hourly distribution exists."""
+    cp = CommitPatternStats(
+        feat=5, fix=3, total=8,
+        hourly_distribution={10: 15, 14: 10, 16: 8, 9: 5},
+    )
+    report = _make_report(commit_patterns=cp)
+    render_report(report, top_n=5)
+    captured = capsys.readouterr()
+    assert "Peak hours" in captured.out
+    assert "10:00" in captured.out
 
 
 def test_render_report_pr_insights(capsys):
@@ -273,6 +361,23 @@ def test_render_report_pr_insights(capsys):
     assert "alice" in captured.out
 
 
+def test_render_report_pr_authors_sorted(capsys):
+    """Top PR Authors should be sorted by count descending."""
+    pri = PRInsights(
+        total_analyzed=10,
+        top_authors=[("bob", 3), ("alice", 7), ("carol", 5)],
+    )
+    report = _make_report(pr_insights=pri)
+    render_report(report, top_n=5)
+    captured = capsys.readouterr()
+    # alice(7) should appear before carol(5) before bob(3)
+    alice_pos = captured.out.index("alice")
+    carol_pos = captured.out.index("carol")
+    bob_pos = captured.out.index("bob")
+    # Within the PR Authors table section only
+    assert alice_pos < carol_pos < bob_pos
+
+
 def test_render_report_issue_insights(capsys):
     """render_report should show issue insights section."""
     ii = IssueInsights(
@@ -287,6 +392,46 @@ def test_render_report_issue_insights(capsys):
     assert "bug" in captured.out
     assert "Top Issue Reporters" in captured.out
     assert "alice" in captured.out
+
+
+def test_render_report_contributor_trends(capsys):
+    """render_report should show contributor activity trends."""
+    from vibe_stats.models import ContributorTrend
+
+    trends = [
+        ContributorTrend(
+            username="alice",
+            first_active_week="2024-01-01",
+            last_active_week="2024-06-01",
+            active_weeks=20,
+            total_weeks=22,
+        ),
+        ContributorTrend(
+            username="bob",
+            first_active_week="2024-03-01",
+            last_active_week="2024-05-01",
+            active_weeks=8,
+            total_weeks=9,
+        ),
+    ]
+    report = _make_report(contributor_trends=trends)
+    render_report(report, top_n=5)
+    captured = capsys.readouterr()
+    assert "Contributor Activity" in captured.out
+    assert "alice" in captured.out
+    assert "bob" in captured.out
+    assert "First Active" in captured.out
+    assert "Last Active" in captured.out
+    # alice: 20/22 = 91%
+    assert "91%" in captured.out
+
+
+def test_render_report_no_contributor_trends_when_empty(capsys):
+    """render_report should NOT show trends section when empty."""
+    report = _make_report(contributor_trends=[])
+    render_report(report, top_n=5)
+    captured = capsys.readouterr()
+    assert "Contributor Activity" not in captured.out
 
 
 def test_render_json_includes_new_fields(capsys):
