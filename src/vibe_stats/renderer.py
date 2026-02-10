@@ -119,26 +119,39 @@ def render_report(
 
     # Repository summary table (only when multiple repos)
     if len(report.repos) > 1:
-        has_stars = any(r.stars > 0 for r in report.repos)
-        has_forks = any(r.forks > 0 for r in report.repos)
+        # Filter out repos with no activity in the period
+        active_repos = [r for r in report.repos if r.total_commits > 0 or r.total_additions > 0]
+        if not active_repos:
+            active_repos = report.repos
 
-        console.print("[bold]Repository Summary[/bold]")
+        has_stars = any(r.stars > 0 for r in active_repos)
+        has_forks = any(r.forks > 0 for r in active_repos)
+
+        inactive_count = len(report.repos) - len(active_repos)
+        title = "Repository Summary"
+        if inactive_count > 0:
+            title += f" ({inactive_count} inactive repos hidden)"
+
+        console.print(f"[bold]{title}[/bold]")
         repo_table = Table(show_header=True, header_style="bold")
-        repo_table.add_column("Repo", no_wrap=True)
+        repo_table.add_column("Repo", no_wrap=True, max_width=30)
         repo_table.add_column("Commits", justify="right", no_wrap=True)
         repo_table.add_column("+/-", justify="right", no_wrap=True)
         if has_stars:
             repo_table.add_column("Stars", justify="right", no_wrap=True)
         if has_forks:
             repo_table.add_column("Forks", justify="right", no_wrap=True)
-        repo_table.add_column("Language", no_wrap=True)
-        repo_table.add_column("Contribs", justify="right", no_wrap=True)
+        repo_table.add_column("Lang", no_wrap=True)
 
-        sorted_repos = sorted(report.repos, key=lambda r: r.total_commits, reverse=True)
-        for r in sorted_repos:
+        _MAX_REPO_ROWS = 30
+        sorted_repos = sorted(active_repos, key=lambda r: r.total_commits, reverse=True)
+        display_repos = sorted_repos[:_MAX_REPO_ROWS]
+        remaining = len(sorted_repos) - len(display_repos)
+
+        for r in display_repos:
             top_lang = r.languages[0].language if r.languages else "-"
             name = f"[dim]A[/dim] {r.name}" if r.is_archived else r.name
-            changes = f"+{_format_number(r.total_additions)} / -{_format_number(r.total_deletions)}"
+            changes = f"+{_format_number(r.total_additions)}/-{_format_number(r.total_deletions)}"
             row: list[str] = [
                 name,
                 _format_number(r.total_commits),
@@ -149,9 +162,10 @@ def render_report(
             if has_forks:
                 row.append(_format_number(r.forks))
             row.append(top_lang)
-            row.append(str(len(r.contributors)))
             repo_table.add_row(*row)
         console.print(repo_table)
+        if remaining > 0:
+            console.print(f"  [dim]... and {remaining} more repos[/dim]")
         console.print()
 
     # Language distribution
@@ -216,7 +230,7 @@ def render_report(
             sorted_hours = sorted(
                 cp.hourly_distribution.items(), key=lambda x: x[1], reverse=True
             )[:3]
-            peak_str = ", ".join(f"{h:02d}:00 ({c})" for h, c in sorted_hours)
+            peak_str = ", ".join(f"{h:02d}:00 ({_format_number(c)})" for h, c in sorted_hours)
             console.print(f"  [dim]Peak hours:[/dim] {peak_str}")
 
         console.print()

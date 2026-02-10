@@ -648,12 +648,21 @@ async def aggregate_org_report(
                 existing = org_trend_map[t.username]
                 first = min(existing.first_active_week, t.first_active_week)
                 last = max(existing.last_active_week, t.last_active_week)
+                # Recalculate total_weeks from merged date span
+                try:
+                    first_dt = datetime.strptime(first, "%Y-%m-%d")
+                    last_dt = datetime.strptime(last, "%Y-%m-%d")
+                    span_weeks = max(1, (last_dt - first_dt).days // 7 + 1)
+                except ValueError:
+                    span_weeks = max(existing.total_weeks, t.total_weeks)
+                # Sum active_weeks but cap at total span
+                merged_active = existing.active_weeks + t.active_weeks
                 org_trend_map[t.username] = ContributorTrend(
                     username=t.username,
                     first_active_week=first,
                     last_active_week=last,
-                    active_weeks=existing.active_weeks + t.active_weeks,
-                    total_weeks=max(existing.total_weeks, t.total_weeks),
+                    active_weeks=min(merged_active, span_weeks),
+                    total_weeks=span_weeks,
                 )
             else:
                 org_trend_map[t.username] = ContributorTrend(
