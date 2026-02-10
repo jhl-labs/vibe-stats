@@ -295,7 +295,7 @@ async def _collect_repo_stats(
         )
     )
     issues_task = asyncio.create_task(
-        client.list_issues(owner, repo_name, state="open", since=since)
+        client.list_issues(owner, repo_name, state="all", since=since)
     )
 
     results = await asyncio.gather(

@@ -130,7 +130,8 @@ class GitHubClient:
             response = await self._get(next_url, params)
             try:
                 data = response.json()
-            except Exception:
+            except Exception as exc:
+                logger.warning("Failed to parse JSON response from %s: %s", next_url, exc)
                 data = []
             if isinstance(data, list):
                 results.extend(data)
@@ -240,7 +241,8 @@ class GitHubClient:
                 return []
             try:
                 data = response.json()
-            except Exception:
+            except Exception as exc:
+                logger.warning("Failed to parse contributor stats JSON for %s/%s: %s", owner, repo, exc)
                 data = []
             result = data if isinstance(data, list) else []
             if self._cache is not None and result:
@@ -256,26 +258,63 @@ class GitHubClient:
         since: str | None = None,
         until: str | None = None,
     ) -> list[dict[str, Any]]:
-        """List pull requests for a repository."""
+        """List pull requests for a repository.
+
+        PRs are fetched sorted by created desc. When *since* is provided,
+        pagination stops early once a PR older than *since* is encountered,
+        avoiding unnecessary API calls.
+        """
+        url = f"/repos/{owner}/{repo}/pulls"
         params: dict[str, Any] = {
             "state": state,
             "sort": "created",
             "direction": "desc",
+            "per_page": 100,
         }
-        results = await self._cached_paginate(
-            f"/repos/{owner}/{repo}/pulls", params=params
-        )
-        # Filter by since/until on created_at
-        if since or until:
-            filtered = []
-            for pr in results:
-                created = pr.get("created_at", "")
-                if since and created < since:
-                    continue
-                if until and created > until:
-                    continue
-                filtered.append(pr)
-            return filtered
+
+        # Use since/until as part of the cache key so different ranges are cached separately
+        cache_params = {**params, "_since": since or "", "_until": until or ""}
+        if self._cache is not None:
+            cached = self._cache.get(url, cache_params)
+            if cached is not None:
+                return cached
+
+        results: list[dict[str, Any]] = []
+        next_url: str | None = url
+        stop = False
+
+        while next_url is not None and not stop:
+            response = await self._get(next_url, params)
+            try:
+                data = response.json()
+            except Exception:
+                logger.warning("Failed to parse JSON from %s", next_url)
+                break
+            if isinstance(data, list):
+                for pr in data:
+                    created = pr.get("created_at", "")
+                    # Early termination: PRs sorted desc by created_at,
+                    # so all remaining PRs on this and subsequent pages are older
+                    if since and created < since:
+                        stop = True
+                        break
+                    if until and created > until:
+                        continue
+                    results.append(pr)
+            else:
+                break
+
+            # Follow Link header for next page
+            next_url = None
+            link_header = response.headers.get("Link", "")
+            for part in link_header.split(","):
+                if 'rel="next"' in part:
+                    next_url = part.split(";")[0].strip().strip("<>")
+                    params = {}  # URL already contains params
+                    break
+
+        if self._cache is not None:
+            self._cache.set(url, cache_params, results)
         return results
 
     async def list_issues(

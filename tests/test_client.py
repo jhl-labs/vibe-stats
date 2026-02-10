@@ -450,12 +450,12 @@ async def test_list_pull_requests_basic():
 
 @pytest.mark.asyncio
 async def test_list_pull_requests_with_since_until():
-    """list_pull_requests should filter by since/until."""
+    """list_pull_requests should filter by since/until (desc order like real API)."""
     client = GitHubClient(token="test-token", no_cache=True)
     prs = [
-        {"state": "open", "created_at": "2024-01-01T00:00:00Z"},
-        {"state": "open", "created_at": "2024-06-01T00:00:00Z"},
         {"state": "open", "created_at": "2024-12-01T00:00:00Z"},
+        {"state": "open", "created_at": "2024-06-01T00:00:00Z"},
+        {"state": "open", "created_at": "2024-01-01T00:00:00Z"},
     ]
     resp = _make_mock_response(200, json_data=prs)
     client._client.get = AsyncMock(return_value=resp)

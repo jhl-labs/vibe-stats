@@ -8,6 +8,7 @@ import sys
 from datetime import datetime, timedelta
 
 import click
+import httpx
 
 from . import __version__
 
@@ -188,14 +189,20 @@ def main(
                 verify_ssl=not no_ssl_verify,
             )
         )
-    except Exception as exc:
-        msg = str(exc)
-        if "404" in msg:
+    except httpx.HTTPStatusError as exc:
+        status = exc.response.status_code
+        if status == 404:
             click.echo(f"Error: '{target}' not found. Check the org/repo name.", err=True)
-        elif "401" in msg or "403" in msg:
+        elif status in (401, 403):
             click.echo("Error: Authentication failed. Check your --token or $GITHUB_TOKEN.", err=True)
         else:
-            click.echo(f"Error: {msg}", err=True)
+            click.echo(f"Error: GitHub API returned {status}.", err=True)
+        sys.exit(1)
+    except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+        click.echo(f"Error: Could not connect to GitHub API. {exc}", err=True)
+        sys.exit(1)
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
         sys.exit(1)
 
 
